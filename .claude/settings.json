@@ -1,13 +1,21 @@
 {
-	"extraKnownMarketplaces": {
-		"svelte": {
-			"source": {
-				"source": "github",
-				"repo": "sveltejs/ai-tools"
-			}
-		}
-	},
-	"enabledPlugins": {
-		"svelte@svelte": true
-	}
+  "permissions": {
+    "allow": [
+      "Bash(bun add *)",
+      "Bash(xargs -I{} echo {})",
+      "Bash(bunx svelte-kit *)",
+      "Bash(npx tsc *)"
+    ]
+  },
+  "enabledPlugins": {
+    "svelte@svelte": true
+  },
+  "extraKnownMarketplaces": {
+    "svelte": {
+      "source": {
+        "source": "github",
+        "repo": "sveltejs/ai-tools"
+      }
+    }
+  }
 }

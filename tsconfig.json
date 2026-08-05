@@ -12,6 +12,8 @@
 		"strict": true,
 		"moduleResolution": "bundler"
 	}
+	// bun-types / @cloudflare/workers-types はグローバルの"types"に足すとDOM libと衝突するため、
+	// bun:sqlite・D1Databaseを直接使うサーバー専用ファイルだけで `/// <reference types="..." />` する
 	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
 	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
 	//

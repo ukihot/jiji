@@ -1,2 +1,180 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
+
+/*
+ * テーマシステム: 9テーマ × light/dark = 18通り。
+ *
+ * 要件定義12章「色は装飾ではなく、異常・課題・状態の表現だけに使用する」に合わせ、
+ * ここで切り替わるのは「ブランド・インタラクションの色」（primary）と背景のみ。
+ * 状態表現の色（danger/warning/success）はテーマに関わらず意味が揺れないよう、
+ * light/darkの2通りだけに固定している（下部参照）。
+ *
+ * surface/border/foreground/mutedは各テーマのbg・primaryから color-mix() で導出し、
+ * 18色×5トークン=90個を手書きしない（Chrome111+/Safari16.4+/Firefox113+が前提。
+ * Tailwind v4自体がこの世代のブラウザを前提にしているため矛盾しない）。
+ */
+
+@theme inline {
+	--color-background: var(--color-background);
+	--color-surface: var(--color-surface);
+	--color-foreground: var(--color-foreground);
+	--color-muted: var(--color-muted);
+	--color-border: var(--color-border);
+	--color-primary: var(--color-primary);
+	--color-primary-foreground: var(--color-primary-foreground);
+	--color-danger: var(--color-danger);
+	--color-warning: var(--color-warning);
+	--color-warning-surface: var(--color-warning-surface);
+	--color-success: var(--color-success);
+}
+
+/* ---- 9テーマ × light/dark: primary・background・primary-foregroundだけを定義する ---- */
+
+:root[data-theme='rurizora'][data-mode='light'] {
+	--color-primary: #0057ff;
+	--color-background: #f8f7f4;
+	--color-primary-foreground: white;
+}
+:root[data-theme='rurizora'][data-mode='dark'] {
+	--color-primary: #3b82f6;
+	--color-background: #0a0e1a;
+	--color-primary-foreground: white;
+}
+
+:root[data-theme='gekkako'][data-mode='light'] {
+	--color-primary: #243b8f;
+	--color-background: #fff0c9;
+	--color-primary-foreground: white;
+}
+:root[data-theme='gekkako'][data-mode='dark'] {
+	--color-primary: #fcd34d;
+	--color-background: #1a2340;
+	--color-primary-foreground: black;
+}
+
+:root[data-theme='yuugasumi'][data-mode='light'] {
+	--color-primary: #6a00f4;
+	--color-background: #ffd6a5;
+	--color-primary-foreground: white;
+}
+:root[data-theme='yuugasumi'][data-mode='dark'] {
+	--color-primary: #ffd6a5;
+	--color-background: #2d0066;
+	--color-primary-foreground: black;
+}
+
+:root[data-theme='yozakura'][data-mode='light'] {
+	--color-primary: #c81e67;
+	--color-background: #fdf2f8;
+	--color-primary-foreground: white;
+}
+:root[data-theme='yozakura'][data-mode='dark'] {
+	--color-primary: #ff4696;
+	--color-background: #1e1033;
+	--color-primary-foreground: white;
+}
+
+:root[data-theme='wakakage'][data-mode='light'] {
+	--color-primary: #4d7c0f;
+	--color-background: #f7fee7;
+	--color-primary-foreground: white;
+}
+:root[data-theme='wakakage'][data-mode='dark'] {
+	--color-primary: #b6ff2e;
+	--color-background: #23262f;
+	--color-primary-foreground: black;
+}
+
+:root[data-theme='fukamidori'][data-mode='light'] {
+	--color-primary: #064e3b;
+	--color-background: #f8e7c9;
+	--color-primary-foreground: white;
+}
+:root[data-theme='fukamidori'][data-mode='dark'] {
+	--color-primary: #f8e7c9;
+	--color-background: #042f24;
+	--color-primary-foreground: black;
+}
+
+:root[data-theme='hoshizukiyo'][data-mode='light'] {
+	--color-primary: #3a0ca3;
+	--color-background: #fefce8;
+	--color-primary-foreground: white;
+}
+:root[data-theme='hoshizukiyo'][data-mode='dark'] {
+	--color-primary: #fff275;
+	--color-background: #3a0ca3;
+	--color-primary-foreground: black;
+}
+
+:root[data-theme='beniusurai'][data-mode='light'] {
+	--color-primary: #c2185b;
+	--color-background: #e0f2fe;
+	--color-primary-foreground: white;
+}
+:root[data-theme='beniusurai'][data-mode='dark'] {
+	--color-primary: #7dd3fc;
+	--color-background: #4c0519;
+	--color-primary-foreground: black;
+}
+
+:root[data-theme='asaginami'][data-mode='light'] {
+	--color-primary: #0e7490;
+	--color-background: #ecfeff;
+	--color-primary-foreground: white;
+}
+:root[data-theme='asaginami'][data-mode='dark'] {
+	--color-primary: #8fffe0;
+	--color-background: #03313a;
+	--color-primary-foreground: black;
+}
+
+/* 未選択時（Cookie未設定の初回アクセス等）のフォールバック */
+:root {
+	--color-primary: #0057ff;
+	--color-background: #f8f7f4;
+	--color-primary-foreground: white;
+}
+
+/* ---- モード共通の導出トークン（テーマのbg/primaryから計算する） ---- */
+
+:root[data-mode='light'],
+:root:not([data-mode='dark']) {
+	--color-surface: color-mix(in srgb, var(--color-background) 100%, white 60%);
+	--color-border: color-mix(in srgb, var(--color-background) 80%, black 20%);
+	--color-foreground: color-mix(in srgb, var(--color-primary) 12%, black 88%);
+	--color-muted: color-mix(in srgb, var(--color-foreground) 55%, white 45%);
+	--color-danger: #dc2626;
+	--color-warning: #d97706;
+	--color-warning-surface: #fef3c7;
+	--color-success: #16a34a;
+}
+
+:root[data-mode='dark'] {
+	--color-surface: color-mix(in srgb, var(--color-background) 85%, white 15%);
+	--color-border: color-mix(in srgb, var(--color-background) 75%, white 25%);
+	--color-foreground: color-mix(in srgb, var(--color-background) 8%, white 92%);
+	--color-muted: color-mix(in srgb, var(--color-foreground) 60%, var(--color-background) 40%);
+	--color-danger: #f87171;
+	--color-warning: #fbbf24;
+	--color-warning-surface: color-mix(in srgb, var(--color-warning) 22%, var(--color-surface) 78%);
+	--color-success: #4ade80;
+}
+
+/* prefers-color-scheme: dataフラグ未設定時のOS追従（SSRのCookie未設定時のみ効く保険） */
+@media (prefers-color-scheme: dark) {
+	:root:not([data-mode]) {
+		--color-surface: color-mix(in srgb, var(--color-background) 85%, white 15%);
+		--color-border: color-mix(in srgb, var(--color-background) 75%, white 25%);
+		--color-foreground: color-mix(in srgb, var(--color-background) 8%, white 92%);
+		--color-muted: color-mix(in srgb, var(--color-foreground) 60%, var(--color-background) 40%);
+	}
+}
+
+body {
+	background-color: var(--color-background);
+	color: var(--color-foreground);
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
+}

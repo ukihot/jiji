@@ -144,12 +144,13 @@ src/
   lib/
     components/                   … 再利用可能なUIコンポーネント
     core/                         … Functional Core（純粋関数のみ）
-      cut.ts                       … evolve / decide（Cut関連）
+      timeline-item.ts             … evolve / decide（配置・並べ替え・種別横断のoffset計算。4.0.1節）
+      cut.ts                       … evolve / decide（Cut固有：シーン分類等）
       version.ts
       seal.ts
       issue.ts                     … 閉栓権チェック・理由必須のdecide
       membership.ts                … evolve / decide（付与・変更・失効）＋ isActive(membership, now)
-      share-link.ts                … 有効期限バリデーション
+      share-link.ts                … 有効期限バリデーション＋Magic Identity招待の検証（8.5節）
       event-hash.ts                … ハッシュチェーン計算
       projections/
         issue-state.ts             … project: Issueの現在状態
@@ -183,26 +184,38 @@ src/
 | テーブル | 主なカラム | 設計上の注意 |
 |---|---|---|
 | `timeline` | id, title_id, season, episode | 話数単位で1レコード |
-| `cut` | id, timeline_id, number(text), sort_order(int), planned_frames, scene_tags(json) | numberは**text**。sort_orderで表示順を独立管理（付録の落とし穴どおり） |
+| `timeline_item` | id, timeline_id, type(cut/audio/transition/marker), label(text), sort_order(int), width_frames(int, markerは0/NULL可) | Timeline上に並ぶ要素の共通台帳。**Cutを含むすべての要素種別がこの1テーブルに乗る**（4.0.1節）。number/尺の表示順はここで一元管理する |
+| `cut` | id(=timeline_item.id), scene_tags(json) | idは独自採番せず`timeline_item.id`をそのままPK/FKとして共有する（クラステーブル継承）。number・sort_order・尺は`timeline_item`側に統合済みのため、Cut固有の属性（シーン分類）のみを持つ |
 | `asset` | id, title_id, type, name | |
-| `cut_asset` | cut_id, asset_id, used_version_id | 多対多の中間テーブル。使用版を記録 |
-| `submission` | id, cut_id or asset_id, process_step, submitted_by, submitted_at | |
+| `cut_asset` | cut_id, asset_id, used_version_id | 多対多の中間テーブル。使用版を記録。cut_idは`cut.id`（=`timeline_item.id`）を指すため、この節の変更による波及なし |
+| `submission` | id, cut_id or asset_id, process_step, submitted_by, submitted_at | cut_idは同上の理由で無改修 |
 | `version` | id, submission_id, seq(int, 自動採番), file_ref, proxy_ref, created_at | **UPDATE禁止・INSERTのみ**。上書きはアプリ層でも禁止する |
 | `review` | id, version_id, reviewer_id, result, comment, reviewed_at | |
 | `seal` | id, version_id, hash, sealed_by, sealed_at | 対象バージョンのハッシュを記録。封印後の再計算差分で改竄検知 |
 | `issue` | id, target_type, target_id, status(open/closed), closer_required_id, close_reason, opened_at, closed_at | 状態は2値のみ。open時にcloser必須、close時に理由必須（DB制約＋アプリ層バリデーションの二重化） |
 | `event` | id, target_type, target_id, type, payload(json), prev_hash, hash, created_at | **追記専用**。DELETE/UPDATE不可（5章参照） |
-| `share_link` | id, token_hash, target_cut_ids(json), expires_at(必須, NULL不可), created_by, revoked_at | 無期限を選べないようexpires_atをNOT NULLにし、アプリ層で最長90日を強制 |
-| `person` | id, name, email, account_type(internal/external) | account_typeでログイン方式（ID/PW+TOTP、または匿名リンクのみ）を分岐。外部作業者でも人物を特定した監査証跡を残したい場合はexternalとしてPersonを作りmembershipを与える（8章） |
+| `share_link` | id, token_hash, target_cut_ids(json), permission_level(viewer/contributor), claimed_person_id(nullable, FK→person), expires_at(必須, NULL不可), created_by, revoked_at | 無期限を選べないようexpires_atをNOT NULLにし、アプリ層で最長90日を強制。`permission_level = contributor`は初回アクセス時にMagic Identity（8.5節）の名前入力を必須化し、生成した`person`を`claimed_person_id`に記録する |
+| `person` | id, name, email(nullable), account_type(internal/external) | account_typeでログイン方式（internal: ID/PW+TOTP／external: 8.5節のMagic Identityによるtoken認証、または長期参加ならmembership付与）を分岐。emailはMagic Identity経由のexternalではNULLのままでよい |
 | `membership` | id, person_id, scope_type(title/timeline), scope_id, permission_level(viewer/contributor/reviewer/admin), process_scope(json, NULL=全工程), granted_by, granted_at, expires_at, revoked_at, revoked_by | Googleスプレッドシートの共有を踏襲したアクセス権。expires_atはNULL可（恒常スタッフ）だが、単話参加・外部委託には運用上必須化する。閉栓権判定はpermission_level＋process_scopeで行う（8章） |
 
 ```text
-Timeline ─┬─< Cut ─┬─< CutAsset >─┬─ Asset
-          │        ├─< Submission ─< Version ─< Review
-          │        │                    └─< Seal
-          │        └─< Issue ─< Event
-          └────────────────────────────< Event（timeline全体イベントも許容）
+Timeline ─< TimelineItem ─┬─ Cut ─┬─< CutAsset >─┬─ Asset
+                           │       ├─< Submission ─< Version ─< Review
+                           │       │                    └─< Seal
+                           │       └─< Issue ─< Event
+                           ├─ Audio        （将来拡張）
+                           ├─ Transition   （将来拡張）
+                           └─ Marker       （将来拡張）
+Timeline ─────────────────────────────────────────────< Event（timeline全体イベントも許容）
 ```
+
+## 4.0.1 なぜTimelineItemを導入するか
+
+現在の実装対象はCutだけだが、Jijiの本体は「Cutの集合」ではなく「更新され続ける1本のTimeline」である（要件定義1.2節）。将来的にOP・ED・CM・提供・アイキャッチ、あるいは劇場版・配信版といったCutではないTimeline構成要素が必ず出てくる。これらをあとから追加しようとすると、Cutを中心に組んだスキーマ・投影・UIコンポーネントを作り直すことになる。
+
+そこで最初から`timeline_item`を共通の台帳として置き、Cutはその一種（サブタイプ）として実装する。`cut.id`を`timeline_item.id`と共有するクラステーブル継承にすることで、`cut_asset` / `submission` / `issue`など既存の`cut_id`参照は一切変更しなくてよい。Audio/Transition/Markerは将来`timeline_item.type`の新しい値として追加し、必要ならCutと同様の詳細テーブル（`audio`等）を足すだけで済む。
+
+**MVP（要件定義13章 Phase 1〜2）で実装するのはCutのみ**。他の種別はスキーマ上の余地として用意するに留め、実装は後回しにする。
 
 ## 4.1 投影テーブル（CQRS読み取りモデル）
 
@@ -212,7 +225,7 @@ Timeline ─┬─< Cut ─┬─< CutAsset >─┬─ Asset
 |---|---|---|
 | `issue_state` | issue_id, status, closer_id, opened_at, closed_at, close_reason | Issue関連イベント |
 | `cut_current_version` | cut_id, latest_version_id, approved_version_id | Version提出・Seal |
-| `timeline_band_view` | episode_id, cut_id, offset_frames, width_frames, process_status(json) | Cut/Submission/Review関連イベント |
+| `timeline_band_view` | episode_id, timeline_item_id, item_type, offset_frames, width_frames, process_status(json, cut以外はNULL) | TimelineItem配置イベント／Cut/Submission/Review関連イベント。7.4節のプレイヘッド同期はこの投影から現在位置直下の要素を逆引きする |
 | `membership_state` | person_id, scope_type, scope_id, permission_level, process_scope, granted_at, expires_at, revoked_at | Membership関連イベント。`is_active`は保存せず、クエリ時に現在時刻と`expires_at`/`revoked_at`を比較して算出する（8.3節） |
 
 ---
@@ -274,28 +287,31 @@ Timeline
 ┌─────────────────────────────────────────┐
 │ Episode 03                         24:00 │
 ├─────────────────────────────────────────┤
-│                                         │
-│  [C01][C02][ C03 ][C04][ C05 ]          │
-│                                         │
-│  LO     █████████████████               │
-│  作画        ████████████               │
-│  3D          █████████                  │
-│  BG       ███████████████               │
-│  撮影             ███████               │
-│                                         │
+│                    │                    │
+│  [C01][C02][ C03 ]│[C04][ C05 ]          │
+│                    │                    │
+│  LO     ███████████│████               │
+│  作画        ██████│██████             │
+│  3D          ██████│████               │
+│  BG       ████████│████████            │
+│  撮影             █│█████               │
+│                    │                    │
 ├─────────────────────────────────────────┤
-│                                         │
-│              ▶ 00:12:34                 │
-│                                         │
+│                    ↕ 現在地カーソル       │
+│         ▶ 00:12:34   C03 / 演出待ち     │
+│                       担当: 佐藤        │
 └─────────────────────────────────────────┘
 ```
+
+現在地カーソル（縦線）はPlayerの再生位置・Timelineの帯・工程バーを貫通し、常にどのカット／どの工程／誰の手番かを1点で示す（7.4節）。
 
 ## 7.2 コンポーネント構成（案）
 
 ```text
 routes/(app)/[title]/[season]/[episode]/+page.svelte
-  └─ TimelineViewer.svelte
+  └─ TimelineViewer.svelte         … playheadFrame（現在地）を所有するオーナー
        ├─ Minimap.svelte
+       ├─ Playhead.svelte          … 現在地カーソル（縦線）。7.4節
        ├─ CutTrack.svelte          … 帯本体。カット幅=尺
        │    └─ CutBar.svelte × N   … 仮想スクロールで描画
        ├─ ProcessLanes.svelte      … LO/作画/3D/BG/撮影の工程バー
@@ -306,6 +322,28 @@ routes/(app)/[title]/[season]/[episode]/+page.svelte
 
 * カットDOMは可視範囲＋バッファ分のみ描画。`IntersectionObserver`または位置計算ベースのwindowingを使う
 * 帯の横軸はコマ数から算出したpx位置にマッピングする純粋関数を用意し、スクロール位置とは独立に計算できるようにする
+
+## 7.4 現在地カーソル（プレイヘッド同期）
+
+Premiere/AE的な「現在地カーソル」を、Player・Timeline・工程・担当者の橋渡し役として置く。動画の再生位置から今どのカットの誰の手番かへ、逆にTimeline上の任意の位置から動画のその瞬間へ、双方向にジャンプできることがJijiの差別化点になる。
+
+```text
+動画再生位置（video.currentTime）
+        ↕  frame ⇄ 秒（基準fps換算）
+Timeline位置（playheadFrame）
+        ↕  timeline_band_view から逆引き（7.3節のoffset⇄px写像の逆関数）
+現在のTimelineItem（Cut等）
+        ↕  cut_current_version / process_status
+現在工程
+        ↕  membership_state（process_scope × permission_level）
+担当者
+```
+
+* `playheadFrame`はTimelineViewer.svelteが持つ単一の共有状態（Svelte 5 `$state`）。CutTrack/ProcessLanes/Playhead/PlayerPaneはこれを読み書きするだけで、互いを直接参照しない
+* PlayerPaneの`timeupdate`イベント → `playheadFrame`を更新（動画→Timeline方向）
+* Timeline上でのスクラブ／クリック → `playheadFrame`を更新 → PlayerPaneが`video.currentTime`をシーク（Timeline→動画方向）
+* `playheadFrame`から現在のTimelineItemを引く関数は、7.3節のoffset計算と同じ「コマ数⇄px」の純粋関数を再利用する（Core、`lib/core/timeline-item.ts`）。カット位置が分かれば`timeline_band_view`から現在工程、`membership_state`から`process_scope`が一致する担当者を引ける
+* 担当者が複数（例：contributor複数名）いる工程では、直近の`submission.submitted_by`を優先表示する
 
 ---
 
@@ -321,7 +359,7 @@ Jijiのユーザー管理は、ゼロから設計せず、現場のスタッフ�
 |---|---|
 | フォルダ全体ではなく個別ファイルを共有できる | Title全体、または話数（Timeline）単位で共有範囲を選べる（`membership.scope_type` / `scope_id`） |
 | 権限レベル（閲覧者・コメント可能・編集者・オーナー） | `permission_level`：viewer / contributor / reviewer / admin の4段階（8.2節） |
-| 「特定のユーザーを追加」 vs 「リンクを知っている全員」 | 名前付きアカウント（`membership`）vs アカウントレス共有リンク（`share_link`）の二経路（8.5節） |
+| 「特定のユーザーを追加」 vs 「リンクを知っている全員」 | 名前付きアカウント（`membership`）vs 軽量ID共有リンク（`share_link`＋Magic Identity）の二経路。後者も既定では名前入力を伴う軽量IDであり、完全匿名ではない（8.5節） |
 | 個々の共有設定に対する有効期限（Google Workspace機能） | `membership.expires_at`。単話参加者への対応の核（8.3節） |
 | オーナーを0人にはできない | Titleごとにadmin権限のmembershipが最低1人残ることを`decide`で保証する（8.3節） |
 
@@ -364,18 +402,48 @@ isActive(membership, now) =
 |---|---|---|
 | 内部ユーザー | ID/パスワード + TOTP | 外部通信ゼロ要件（N-01相当）を満たすため、TOTP検証はローカル完結のライブラリを使う（QRコード生成も外部CDN不使用）。ログイン成功後もリクエスト毎にmembershipの`isActive`を再検証する |
 
-## 8.5 外部作業者：署名付き共有リンク
+## 8.5 外部作業者：Magic Identity（既定）と署名付き共有リンク
 
-| 対象 | 方式 | 実装メモ |
-|---|---|---|
-| 外部作業者 | 署名付きURL | `share_link.token_hash` を検証。有効期限・対象カットID・（可能なら）端末指紋をペイロードに含めHMAC署名。アカウント作成不要、リンクを開くだけで提出画面に到達 |
+### 8.5.1 なぜ完全匿名を既定にしないか
 
-`share_link`は、person/membershipを介さない**匿名版の時限アクセス**であり、8.1節の「リンクを知っている全員」に相当する。1話だけ関わる外部スタッフへの対応は、監査の必要度に応じて次の2通りを使い分ける。
+`share_link`単体で完結する完全匿名の提出は運用上は楽だが、**「誰が提出したか分からない」は制作現場では事故になる**。これはF-15（全アクセス監査）・P-04（過去は消さない）と本質的に矛盾する。したがって**書き込み（提出・レビュー）を伴う共有リンクでは、完全匿名を既定にしない**。
+
+### 8.5.2 Magic Identity方式（既定）
+
+名前だけを入力させ、メールアドレス・パスワードは要求しない軽量な本人識別。「匿名」ではなく「軽量ID」として扱う。
+
+```text
+制作進行: 佐藤さんにC-125を依頼
+   ↓
+Jiji: https://jiji.example/invite/abc （招待リンクを送付）
+   ↓
+佐藤: リンクを開く → 名前を入力（メール/パスワード不要）
+   ↓
+Jiji内部: person（account_type=external, name="佐藤"）を作成し、
+          share_linkにひも付くtoken認証でセッションを開始
+```
+
+* 実装上は`share_link`（`permission_level = contributor`）を開いた初回アクセスで名前入力フォームを挟む。入力された名前で`person`（`account_type = external`）を作成し、`share_link.claimed_person_id`に記録する
+* 以降のアクセスは同じトークン（署名付きCookie等）でその`person`として扱われる。ID/PWは発行しない——**認証はトークン、識別は名前**という役割分担にする
+* 提出・レビューはすべてこの`person_id`で記録されるため、Version/Reviewの記名（F-15）が自動的に満たされる
+* 同一人物が別トークン（別リンク）で来た場合の名寄せはしない（MVPでは「同一トークン＝同一人物」のみ保証する）。名寄せ・長期追跡が要る場合は8.5.4節を使う
+
+### 8.5.3 完全匿名を許してよい場合（例外）
+
+閲覧専用（`share_link.permission_level = viewer`）で状態を一切変更しない共有（監督試写用のクライアント確認URLなど）は、名前入力を省略してよい。書き込みが発生しない限り「誰が見たか」の欠落は事故に直結しないため。
+
+### 8.5.4 個人を強く特定したい場合：`person` + `membership`
+
+1話だけ関わる外部スタッフでも、複数話・長期間にわたり同一人物として追跡したい場合はMagic Identityではなくこちらを使う。
 
 | 状況 | 選択肢 |
 |---|---|
-| 誰が提出・確認したかを個人単位で追跡したい（Review/Versionに個人の記名が必要） | `person`（external）＋`timeline`スコープの`membership`。期限は8.3節のとおり必須化 |
-| 名前を問わず、期限内に決められたカットへ提出できればよい | 既存の`share_link`（person不要、アカウントレス） |
+| 複数話・長期間にわたり同一人物として追跡したい、ログインを求めてよい | `person`（external）＋`timeline`スコープの`membership`。期限は8.3節のとおり必須化 |
+| 単発の依頼で、その場限りの軽量な本人識別で足りる（既定） | 8.5.2節のMagic Identity |
+
+### 8.5.5 データモデル
+
+`share_link`に`permission_level`（viewer/contributor）と`claimed_person_id`（nullable, FK→person）を持つ（4章）。`contributor`は名前入力を必須化し、`viewer`は任意とする判定に使う。
 
 ## 8.6 メンバー管理画面（概念ワイヤーフレーム）
 
@@ -399,8 +467,10 @@ isActive(membership, now) =
 # 9. 未決定事項
 
 * DuckDBの採用方法：TypeScript環境からの利用手段（Node/Bun向けバインディング or WASM）。イベントログ分析用途にSQLite側の集計クエリで代替できないかを含めて検討する
-* `bun build --compile` によるシングルバイナリ化の実地検証（ffmpegバイナリの同梱・クロスプラットフォーム対応）
 * Cloudflare D1版のffmpeg実行手段（Workers上ではネイティブプロセスが起動できないため、ホスティングSaaS版のプロキシ生成方式を別途設計する）
 * 投影テーブルの再構築手段：スキーマ変更やバグ修正後に`event`からの一括リプレイで投影テーブルを作り直すバッチ処理の設計
 * membershipの期限切れ通知：期限が近いメンバーを制作進行に事前通知する手段（UIバッジのみで足りるか、メール等の能動的通知が要るか）。外部通信ゼロ原則との整合を含めて検討する
 * membershipの失効反映タイミング：リクエスト毎の`isActive`再評価で十分か、長時間セッションを能動的に切断する仕組み（WebSocket等）が要るか
+* Magic Identityのトークン運用：端末紛失・トークン漏洩時の再発行／失効フロー。同一人物が複数トークンを持った場合に`person`を統合する手段の要否
+* TimelineItemの他種別（Audio/Transition/Marker）に7章の工程DAGをどこまで適用するか。OP/ED/CM・劇場版/配信版への拡張時に再検討する
+* 現在地カーソル（7.4節）の同期粒度とパフォーマンス：フレーム単位で追従させるか一定間隔に間引くか、スクラブ中の再描画コスト

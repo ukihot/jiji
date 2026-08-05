@@ -12,6 +12,13 @@
  * surface/border/foreground/mutedは各テーマのbg・primaryから color-mix() で導出し、
  * 18色×5トークン=90個を手書きしない（Chrome111+/Safari16.4+/Firefox113+が前提。
  * Tailwind v4自体がこの世代のブラウザを前提にしているため矛盾しない）。
+ *
+ * color-mix()の補間空間は `in oklch` にしている。Tailwind v4のデフォルトパレット自体が
+ * OKLCHベースになっているのに合わせた選択で、sRGB補間だと離れた色相同士（例:紫→橙）を
+ * 混ぜたときに彩度が落ちて濁った中間色になりやすいのに対し、OKLCH補間は知覚的に均一で
+ * 濁りにくい。18テーマそれぞれのprimary/backgroundの生値（下記）はユーザー指定の
+ * 16進カラーコードをそのまま保持し、そこから導出するsurface/border/foreground/mutedだけを
+ * OKLCH空間で計算する、という役割分担にしている。
  */
 
 @theme inline {
@@ -140,10 +147,10 @@
 
 :root[data-mode='light'],
 :root:not([data-mode='dark']) {
-	--color-surface: color-mix(in srgb, var(--color-background) 100%, white 60%);
-	--color-border: color-mix(in srgb, var(--color-background) 80%, black 20%);
-	--color-foreground: color-mix(in srgb, var(--color-primary) 12%, black 88%);
-	--color-muted: color-mix(in srgb, var(--color-foreground) 55%, white 45%);
+	--color-surface: color-mix(in oklch, var(--color-background) 100%, white 60%);
+	--color-border: color-mix(in oklch, var(--color-background) 80%, black 20%);
+	--color-foreground: color-mix(in oklch, var(--color-primary) 12%, black 88%);
+	--color-muted: color-mix(in oklch, var(--color-foreground) 55%, white 45%);
 	--color-danger: #dc2626;
 	--color-warning: #d97706;
 	--color-warning-surface: #fef3c7;
@@ -151,23 +158,23 @@
 }
 
 :root[data-mode='dark'] {
-	--color-surface: color-mix(in srgb, var(--color-background) 85%, white 15%);
-	--color-border: color-mix(in srgb, var(--color-background) 75%, white 25%);
-	--color-foreground: color-mix(in srgb, var(--color-background) 8%, white 92%);
-	--color-muted: color-mix(in srgb, var(--color-foreground) 60%, var(--color-background) 40%);
+	--color-surface: color-mix(in oklch, var(--color-background) 85%, white 15%);
+	--color-border: color-mix(in oklch, var(--color-background) 75%, white 25%);
+	--color-foreground: color-mix(in oklch, var(--color-background) 8%, white 92%);
+	--color-muted: color-mix(in oklch, var(--color-foreground) 60%, var(--color-background) 40%);
 	--color-danger: #f87171;
 	--color-warning: #fbbf24;
-	--color-warning-surface: color-mix(in srgb, var(--color-warning) 22%, var(--color-surface) 78%);
+	--color-warning-surface: color-mix(in oklch, var(--color-warning) 22%, var(--color-surface) 78%);
 	--color-success: #4ade80;
 }
 
 /* prefers-color-scheme: dataフラグ未設定時のOS追従（SSRのCookie未設定時のみ効く保険） */
 @media (prefers-color-scheme: dark) {
 	:root:not([data-mode]) {
-		--color-surface: color-mix(in srgb, var(--color-background) 85%, white 15%);
-		--color-border: color-mix(in srgb, var(--color-background) 75%, white 25%);
-		--color-foreground: color-mix(in srgb, var(--color-background) 8%, white 92%);
-		--color-muted: color-mix(in srgb, var(--color-foreground) 60%, var(--color-background) 40%);
+		--color-surface: color-mix(in oklch, var(--color-background) 85%, white 15%);
+		--color-border: color-mix(in oklch, var(--color-background) 75%, white 25%);
+		--color-foreground: color-mix(in oklch, var(--color-background) 8%, white 92%);
+		--color-muted: color-mix(in oklch, var(--color-foreground) 60%, var(--color-background) 40%);
 	}
 }
 

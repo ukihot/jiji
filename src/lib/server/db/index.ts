@@ -3,7 +3,11 @@ import { drizzle as drizzleLibsql, type LibSQLDatabase } from 'drizzle-orm/libsq
 import { drizzle as drizzleD1, type DrizzleD1Database } from 'drizzle-orm/d1';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import * as schema from './schema';
-import { ensureEventAppendOnlyTriggers } from './bootstrap';
+import {
+	ensureEventAppendOnlyTriggers,
+	ensureSealAppendOnlyTriggers,
+	ensureVersionAppendOnlyTriggers,
+} from './bootstrap';
 
 export type Db = LibSQLDatabase<typeof schema> | DrizzleD1Database<typeof schema>;
 /**
@@ -40,6 +44,8 @@ export async function getDb(platform?: App.Platform): Promise<Db> {
 	}
 	if (!bootstrapped) {
 		await ensureEventAppendOnlyTriggers(sqliteDb);
+		await ensureVersionAppendOnlyTriggers(sqliteDb);
+		await ensureSealAppendOnlyTriggers(sqliteDb);
 		bootstrapped = true;
 	}
 	return sqliteDb;

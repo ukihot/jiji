@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import * as m from '$lib/paraglide/messages';
 import { setCurrentPersonId } from '$lib/server/auth/internal';
 import { listInternalPersons } from '$lib/server/shell/repository/person-repository';
 
@@ -13,7 +14,7 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const personId = formData.get('personId');
 		if (typeof personId !== 'string' || personId.length === 0) {
-			return fail(400, { message: '選んでください' });
+			return fail(400, { message: m.error_select_required() });
 		}
 		setCurrentPersonId(cookies, personId);
 		redirect(303, '/');

@@ -12,8 +12,10 @@
 		"strict": true,
 		"moduleResolution": "bundler"
 	}
-	// bun-types / @cloudflare/workers-types はグローバルの"types"に足すとDOM libと衝突するため、
-	// bun:sqlite・D1Databaseを直接使うサーバー専用ファイルだけで `/// <reference types="..." />` する
+	// D1DatabaseはCloudflareの公式`@cloudflare/workers-types`ではなく、app.d.tsにその場で
+	// 最小限のアンビエント宣言をしている。あのパッケージはグローバルのRequest/Response/RequestInitを
+	// Workers版に上書きし、paraglide-jsの生成コード（通常のDOM Requestを前提）と型が衝突するため
+	// （"exclude"はTypeScriptの仕様上、importで到達するファイルの型チェックまでは止められない）。
 	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
 	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
 	//

@@ -1,4 +1,4 @@
-# 作品管理ツール「Jiji」要件定義 v0.2
+# 作品管理ツール「Jiji」要件定義 v0.3
 
 **国産TVアニメーション制作のための Living Timeline**
 
@@ -61,6 +61,39 @@ Jijiは、制作工程を別々のタスクやファイルとして管理する�
 
 **同じ時間軸が更新され続ける。**
 
+### Cut Lineage（カット系譜）
+
+> **同じカットは、工程を経るごとに姿を変えながら、一つの系譜として繋がっている。**
+
+```text
+Cut C-125
+ ├─ Storyboard      （意図）
+ ├─ Layout          （画面設計）
+ ├─ Animation        （動き）
+ ├─ BG               （背景）
+ ├─ CG Render (EXR)  （光学的表現）
+ ├─ Composite        （合成）
+ └─ Final            （納品）
+```
+
+絵コンテはPNG、背景はPSD、CGレンダーはEXR、確認はMP4、納品はProRes——同じカットが、工程ごとに異なるファイル形式・異なる意味で存在する。Jijiはこれらを別々の成果物として管理しない。
+
+絵コンテは映像になる前の意図であり、EXRは光学的表現であり、PSDは描画表現であり、MP4は確認表現であり、ProResは納品表現である。**形式は違っても、すべて同じカットの異なる表現形態（Representation）である。**
+
+Living Timelineが「作品全体を時間軸として束ねる」のに対し、Cut Lineageは「1カットを表現形態の系譜として束ねる」。両者は直交する2つの軸であり、個々の成果物はこの2軸の交点に位置づけられる。
+
+```text
+        Living Timeline（横軸：時間・全カット）
+              ───────────────────▶
+
+Cut Lineage  Storyboard
+（縦軸：       Layout
+ 1カットの      Animation
+ 表現形態）      ⋮
+   │           Final
+   ▼
+```
+
 ---
 
 ## 1.3 Jijiが管理するもの
@@ -99,15 +132,16 @@ Jijiが中心に置くのは、
 
 ---
 
-## 1.4 三本柱
+## 1.4 四本柱
 
 | 柱                   | 内容                          |
 | ------------------- | --------------------------- |
 | **Living Timeline** | 絵コンテから完パケまで、同一タイムラインを更新し続ける |
+| **Cut Lineage**     | 同じカットの異なる表現形態（絵コンテ〜完パケ）を一つの系譜として統合する |
 | **尺と映像の一体管理**       | コマ単位の尺管理、通し再生、予定尺と実尺の比較     |
 | **監査可能な制作履歴**       | すべての変更・提出・確認・共有を追跡可能にする     |
 
-セキュリティは独立した機能ではなく、**Living Timelineの履歴を壊さないための基盤**として扱う。
+セキュリティは独立した機能ではなく、**Living Timeline / Cut Lineageの履歴を壊さないための基盤**として扱う。
 
 ---
 
@@ -309,6 +343,27 @@ Episode 03
 
 ---
 
+## 4.4 Representation（表現体）とCut Lineage
+
+`Representation` は、あるCutが特定の工程段階において取る**表現形態**を指す。
+
+| Representation | 典型的な形式 | 対応する工程（7章、目安） |
+| --- | --- | --- |
+| Storyboard（絵コンテ） | PNG / PDF | 絵コンテ |
+| Animatic | MP4 | アニマティクス |
+| Layout | PSD | LO |
+| Animation | PSD / 連番PNG | 一原〜動画 |
+| BG | PSD | 美術 |
+| CG Render | EXR（マルチAOV） | 3D Rendering |
+| Composite | AEP / PSD / EXR | 撮影 |
+| Final | ProRes / MP4 | 完パケ |
+
+同一Cutに属するRepresentationの集合を、時系列で束ねたものを **Cut Lineage（カット系譜）** と呼ぶ（1.2節）。
+
+Representationは工程と1対1ではない。複数の工程ステップ（一原・演出・作監・二原・動画）が同じ「Animation」というRepresentationの中でVersionを重ねていくこともあれば、CG RenderのようにEXRのAOVレイヤーという内部構造を持つRepresentationもある。RepresentationとVersionの関係は6.1節・6.2節で定義する。
+
+---
+
 # 5. Living Timelineモデル
 
 ## 5.1 タイムラインは「一枚の作品」である
@@ -330,6 +385,8 @@ Final ─────────┘
 ```
 
 各段階は「別作品」ではなく、**同じ作品の異なる時点**である。
+
+この「段階」の並びは、タイムライン全体（すべてのカット）を通して観測したものである。同じ並びを**1つのCutに絞って**見たものがCut Lineage（1.2節・4.4節）であり、上図とCut Lineageの図は同じ軸を異なる粒度（全カット／単一カット）で見ている。
 
 ---
 
@@ -390,10 +447,11 @@ Final ─────────┘
 | `Timeline`   | 作品の時間軸          |
 | `TimelineItem` | タイムラインを構成する要素の総称（Cut/Audio/Transition/Marker等。4.1節） |
 | `Cut`        | タイムラインを構成する映像区間（`TimelineItem`の一種。MVPで実装する中心的な種別） |
+| `Representation` | Cutが工程を経て取る個々の表現形態（Storyboard/Layout/Animation/CG Render等）。Cut Lineageを構成する単位（4.4節） |
 | `Asset`      | カット横断で利用される共有素材 |
 | `CutAsset`   | カットとアセットの関係     |
-| `Submission` | 制作物の提出          |
-| `Version`    | 提出物の不変な版        |
+| `Submission` | 特定のRepresentationに対する制作物の提出 |
+| `Version`    | 提出物の不変な版（Representation配下で連番管理） |
 | `Review`     | 確認・判断           |
 | `Seal`       | 合格版の封印          |
 | `Issue`      | 解決すべき課題         |
@@ -404,12 +462,33 @@ Final ─────────┘
 
 ---
 
-## 6.1 Version
+## 6.1 Representation
 
-提出物は上書きしない。
+`Representation` は、Cutが工程を経て取る個々の表現形態である。
 
 ```text
 C-125
+ ├─ Representation: Storyboard
+ ├─ Representation: Layout
+ ├─ Representation: Animation
+ ├─ Representation: BG
+ ├─ Representation: CG Render
+ ├─ Representation: Composite
+ └─ Representation: Final
+```
+
+1つのRepresentationは、複数のVersionを持つ（6.2節）。RepresentationはCutに従属し、Cutに属するRepresentationの集合がCut Lineage（4.4節）である。
+
+EXRのように、1つのVersionが内部に複数レイヤー（AOV: beauty / diffuse / specular / normal 等）を持つ場合がある。JijiはこれをVersionのメタデータとして保持し、レイヤー単体を独立したRepresentationやVersionとしては扱わない（F-25）。
+
+---
+
+## 6.2 Version
+
+同一Representation内で、提出物は上書きしない。
+
+```text
+C-125 / Animation
  ├─ Version 01
  ├─ Version 02
  ├─ Version 03
@@ -428,7 +507,7 @@ Approved Version
 
 ---
 
-## 6.2 Seal
+## 6.3 Seal
 
 `Seal` は「その版を採用した」という事実を記録する。
 
@@ -450,7 +529,7 @@ Approved
 
 ---
 
-## 6.3 Issue
+## 6.4 Issue
 
 課題は `Open / Closed` の2状態のみ。
 
@@ -565,6 +644,12 @@ JijiはこのDAGを**ユーザーが自由に設計するワークフローエ�
 | F-19 | タイムラインスナップショット        |
 | F-20 | **過去時点のタイムライン再生**     |
 | F-21 | 再生カーソルの同期（動画再生位置⇔タイムライン位置⇔現在工程⇔担当者を1本のカーソルで往復できる） |
+| F-22 | **Cut Lineage表示**（Cut単位で全Representationの系譜を表示） |
+| F-23 | 異種成果物（PSD/PNG/EXR/AEP/ProRes等）の同一Cut統合 |
+| F-24 | Representation単位のVersion管理 |
+| F-25 | EXR Layer/AOV情報取得 |
+| F-26 | 素材から完成映像までの系譜表示 |
+| F-27 | Cut単位の比較再生（異なるRepresentation/Versionを並べて比較） |
 
 ---
 
@@ -580,6 +665,11 @@ JijiはこのDAGを**ユーザーが自由に設計するワークフローエ�
 | F-35 | 作品終了時の共有リンク一括失効 |
 | F-36 | 監査証跡パック出力       |
 | F-37 | メンバーのアクセス範囲・有効期限管理（単話参加スタッフを含む） |
+| F-38 | PSDレイヤー差分表示 |
+| F-39 | EXR AOV比較 |
+| F-40 | DCC Metadata取得 |
+| F-41 | AE/Nuke依存解析 |
+| F-42 | クラウドストレージ連携（Google Drive/Dropbox。原本の参照先としてNAS/S3/Localに追加。design.md 9章） |
 
 ---
 
@@ -587,11 +677,11 @@ JijiはこのDAGを**ユーザーが自由に設計するワークフローエ�
 
 | ID   | 機能            |
 | ---- | ------------- |
-| F-40 | ローカル意味検索      |
-| F-41 | タイムシート / X表連携 |
-| F-42 | AE等の撮影ソフト連携   |
-| F-43 | DCC連携         |
-| F-44 | OP/ED/CM/アイキャッチ等の非カット構成要素管理（TimelineItemのCut以外の種別対応。劇場版・配信版など派生Timelineへの拡張を含む） |
+| F-50 | ローカル意味検索      |
+| F-51 | タイムシート / X表連携 |
+| F-52 | AE等の撮影ソフト連携   |
+| F-53 | DCC連携         |
+| F-54 | OP/ED/CM/アイキャッチ等の非カット構成要素管理（TimelineItemのCut以外の種別対応。劇場版・配信版など派生Timelineへの拡張を含む） |
 
 ---
 
@@ -651,7 +741,7 @@ Jijiはストレージシステムではない。
         Proxy / Hash
 ```
 
-原本を移動・複製しない。
+原本を移動・複製しない。「NAS / S3 / Local」は代表例であり、Google Drive・Dropboxのようなクラウドストレージも同じ位置づけの原本置き場として扱える（F-42, Should。design.md 9章）。
 
 Jijiが管理するのは、
 
@@ -676,7 +766,9 @@ Jiji導入 = 既存ストレージの上に薄いレイヤーを足すだけ
 
 原本ファイルはNAS / S3 / ローカルのどこにあってもよい。ファイルだけを見ても、それが合格版なのか、差し戻し中なのか、なぜ変更されたのかはわからない。
 
-その意味構造 — Version / Seal / Event / Issue — は、Jijiだけが保持する。
+同様に、EXRファイル単体を見ても、それがどのCutのどの表現段階（Representation）に属するかはファイルシステム上には残らない。その系譜（Cut Lineage）を保持するのもJijiだけである。
+
+その意味構造 — Representation / Version / Seal / Event / Issue — は、Jijiだけが保持する。
 
 ```text
 ファイル本体      → 既存ストレージに残る（寄生先）
@@ -716,6 +808,8 @@ Jijiの主画面は、**Timeline EditorではなくTimeline Viewer**である。
 > **現在の作品**
 
 である。
+
+作品全体を俯瞰するTimeline Viewerに対して、1カットを掘り下げる**Cut Evolution Viewer**を副画面として持つ。Cut Lineage（1.2節・4.4節）をカット単位で展開し、Representationを並べて比較・切替できる（F-22, F-27）。ただし主従は変わらない——Cut Evolution Viewerは常にTimeline Viewer上のカットから遷移する詳細ビューであり、独立した入口を持たない（P-01：タイムラインが正規の作品表現である）。
 
 画面レイアウトの具体案（ワイヤーフレーム）はdoc/design.mdに置く。要件として定めるのは、以下の性質のみ。
 
@@ -762,6 +856,8 @@ Jijiの最大のリスクは「セキュリティ」ではない。
 
 が**一本のTimelineとして本当に繋がる**なら、Jijiは成立する。
 
+これを1カットで見れば、Representationが途切れず繋がり、Cut Lineage（1.2節）が成立している状態と同義である。
+
 ---
 
 # 14. リスク
@@ -779,6 +875,7 @@ Jijiの最大のリスクは「セキュリティ」ではない。
 | タイムラインの肥大化      | ミニマップ＋仮想スクロール                     |
 | 作品の過去再現が困難      | Event + Version + Snapshotで構造的に保存 |
 | Timelineの表現力不足（OP/ED/CM等が扱えない） | Cutを含む全構成要素を最初からTimelineItemとして一般化（doc/design.md 4章） |
+| Representationの増加によるモデル複雑化 | Representationは工程DAG（7章）の代替ではなく分類ラベルとして扱う。EXR/PSDの内部構造（AOV・レイヤー）はVersionのメタデータに留め、独立エンティティにしない（6.1節）。DCC連携の深追いはShould/Couldに留める |
 
 ---
 
@@ -786,7 +883,7 @@ Jijiの最大のリスクは「セキュリティ」ではない。
 
 Jijiは、**「アニメ制作の進捗管理ツール」ではない。****「制作物を管理するDAMでもない。****「タスク管理ツール」でもない。**Jijiが管理するのは、
 
-> **作品が完成していく時間そのもの**
+> **作品が、複数の表現形態を経由しながら完成していく時間そのもの**
 
 である。
 
@@ -817,6 +914,8 @@ Jijiは、**「アニメ制作の進捗管理ツール」ではない。****「�
 > **イベント履歴 = 作品が変化した理由**
 >
 > **成果物 = タイムライン上の各時点に存在する実体**
+>
+> **Cut Lineage = 1カットが辿ってきた表現形態の道のり**
 
 となる。
 

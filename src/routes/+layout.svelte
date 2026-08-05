@@ -1,10 +1,9 @@
 <script lang="ts">
-	import type { Pathname } from '$app/types';
-	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
-	import { locales, localizeHref } from '$lib/paraglide/runtime';
-	import { Film, LogIn, User } from 'lucide-svelte';
-	import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
+	import * as m from '$lib/paraglide/messages';
+	import Film from '@lucide/svelte/icons/film';
+	import LogIn from '@lucide/svelte/icons/log-in';
+	import ModeToggle from '$lib/components/ModeToggle.svelte';
+	import UserMenu from '$lib/components/UserMenu.svelte';
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 
@@ -22,30 +21,21 @@
 
 		<div class="flex items-center gap-4">
 			{#if data.currentPerson}
-				<span class="text-muted flex items-center gap-1.5 text-sm">
-					<User size={16} aria-hidden="true" />
-					{data.currentPerson.name}
-				</span>
+				<UserMenu person={data.currentPerson} />
 			{:else}
 				<a
 					href="/dev-login"
 					class="text-primary flex items-center gap-1.5 text-sm no-underline hover:underline"
 				>
 					<LogIn size={16} aria-hidden="true" />
-					ログイン
+					{m.nav_login()}
 				</a>
 			{/if}
-			<ThemeSwitcher theme={data.theme} mode={data.mode} />
+			<ModeToggle mode={data.mode} />
 		</div>
 	</header>
 
 	<main class="flex-1 py-6">
 		{@render children()}
 	</main>
-</div>
-
-<div style="display:none">
-	{#each locales as locale (locale)}
-		<a href={resolve(localizeHref(page.url.pathname, { locale }) as Pathname)}>{locale}</a>
-	{/each}
 </div>

@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { AlertTriangle, Film, Plus } from 'lucide-svelte';
+	import Film from '@lucide/svelte/icons/film';
+	import Plus from '@lucide/svelte/icons/plus';
+	import * as m from '$lib/paraglide/messages';
+	import Button from '$lib/components/Button.svelte';
+	import EntityList from '$lib/components/EntityList.svelte';
+	import ErrorNotice from '$lib/components/ErrorNotice.svelte';
+	import FormField from '$lib/components/FormField.svelte';
+	import FormInput from '$lib/components/FormInput.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -8,19 +15,19 @@
 <div class="space-y-1">
 	<h1 class="text-foreground text-2xl font-bold">Jiji</h1>
 	<p class="text-muted text-sm">
-		絵コンテから完パケまで、1本のタイムラインが更新され続ける作品管理ツール。
+		{m.home_tagline()}
 	</p>
 </div>
 
 <section class="mt-8">
-	<h2 class="text-foreground mb-3 text-lg font-semibold">作品一覧</h2>
+	<h2 class="text-foreground mb-3 text-lg font-semibold">{m.home_titles_heading()}</h2>
 	{#if data.titles.length === 0}
 		<p class="text-muted flex items-center gap-2 text-sm">
 			<Film size={16} aria-hidden="true" />
-			まだ作品がありません。
+			{m.home_titles_empty()}
 		</p>
 	{:else}
-		<ul class="divide-border border-border bg-surface divide-y overflow-hidden rounded-lg border">
+		<EntityList>
 			{#each data.titles as title (title.id)}
 				<li>
 					<a
@@ -31,36 +38,24 @@
 					</a>
 				</li>
 			{/each}
-		</ul>
+		</EntityList>
 	{/if}
 </section>
 
 {#if data.currentPerson}
 	<section class="mt-8">
-		<h2 class="text-foreground mb-3 text-lg font-semibold">新しい作品を作る</h2>
+		<h2 class="text-foreground mb-3 text-lg font-semibold">{m.home_create_heading()}</h2>
 		{#if form?.message}
-			<p class="text-danger mb-3 flex items-center gap-1.5 text-sm">
-				<AlertTriangle size={16} aria-hidden="true" />
-				{form.message}
-			</p>
+			<ErrorNotice message={form.message} class="mb-3" />
 		{/if}
 		<form method="POST" action="?/createTitle" class="flex items-end gap-2">
-			<label class="text-muted flex flex-col gap-1 text-sm">
-				作品名
-				<input
-					type="text"
-					name="name"
-					required
-					class="border-border bg-background text-foreground focus:border-primary focus:ring-primary rounded-md px-2 py-1.5 text-sm"
-				/>
-			</label>
-			<button
-				type="submit"
-				class="bg-primary text-primary-foreground flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium hover:opacity-90"
-			>
+			<FormField label={m.label_title_name()}>
+				<FormInput type="text" name="name" required />
+			</FormField>
+			<Button type="submit">
 				<Plus size={16} aria-hidden="true" />
-				作成
-			</button>
+				{m.action_create()}
+			</Button>
 		</form>
 	</section>
 {/if}

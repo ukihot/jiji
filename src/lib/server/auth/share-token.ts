@@ -29,3 +29,7 @@ export function setShareTokenCookie(cookies: Cookies, token: string, expiresAt: 
 		expires: expiresAt,
 	});
 }
+
+export function clearShareTokenCookie(cookies: Cookies): void {
+	cookies.delete(COOKIE_NAME, { path: '/' });
+}

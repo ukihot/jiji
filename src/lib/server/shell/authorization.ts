@@ -1,6 +1,8 @@
 import { isMembershipActive, type PermissionLevel } from '$lib/core/membership';
+import { isShareLinkActive } from '$lib/core/share-link';
 import type { SqliteDb } from '../db';
 import { listMembershipStateByScope } from './repository/membership-repository';
+import { listShareLinks } from './repository/share-link-repository';
 
 const RANK: Record<PermissionLevel, number> = { viewer: 0, contributor: 1, reviewer: 2, admin: 3 };
 
@@ -37,4 +39,26 @@ export async function hasAtLeast(
 		if (matched) return true;
 	}
 	return false;
+}
+
+/**
+ * design.md 8.5節 Magic Identity: membershipを持たない外部作業者（share_linkのclaimed_person）が、
+ * そのcutを対象にした有効なcontributorリンクを持っているか。F-13（外部作業者によるアカウントレス提出）
+ * の実体はここ——hasAtLeastだけではmembership前提の判定しかできないため、Cut Evolution Viewerの
+ * 提出可否（submit-version.tsを叩けるか）はhasAtLeastとこれのORで判定する。
+ */
+export async function hasShareLinkContributorAccess(
+	db: SqliteDb,
+	personId: string,
+	cutId: string,
+	now: Date = new Date(),
+): Promise<boolean> {
+	const links = await listShareLinks(db);
+	return links.some(
+		(link) =>
+			link.claimedPersonId === personId &&
+			link.permissionLevel === 'contributor' &&
+			link.targetCutIds.includes(cutId) &&
+			isShareLinkActive(link, now),
+	);
 }

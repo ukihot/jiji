@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import * as m from '$lib/paraglide/messages';
 import { setShareTokenCookie } from '$lib/server/auth/share-token';
 import { claimShareLink } from '$lib/server/shell/commands/claim-share-link';
 import { resolveShareLinkByToken } from '$lib/server/shell/queries/resolve-share-link';
@@ -14,19 +15,19 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const name = formData.get('name');
 		if (typeof name !== 'string' || name.trim().length === 0) {
-			return fail(400, { message: '名前を入力してください' });
+			return fail(400, { message: m.error_name_required() });
 		}
 
 		const result = await claimShareLink(locals.db, { token: params.token, name });
 		if (!result.ok) {
 			const message =
 				result.error.kind === 'not_found'
-					? 'リンクが見つかりません'
+					? m.error_link_not_found()
 					: result.error.kind === 'link_inactive'
-						? 'このリンクは期限切れ、または取り消されています'
+						? m.error_link_inactive()
 						: result.error.kind === 'blank_name'
-							? '名前を入力してください'
-							: 'エラーが発生しました';
+							? m.error_name_required()
+							: m.error_generic();
 			return fail(400, { message });
 		}
 

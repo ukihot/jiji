@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { AlertTriangle, ArrowLeft, KeyRound, LogIn } from 'lucide-svelte';
+	import KeyRound from '@lucide/svelte/icons/key-round';
+	import LogIn from '@lucide/svelte/icons/log-in';
+	import * as m from '$lib/paraglide/messages';
+	import BackLink from '$lib/components/BackLink.svelte';
+	import Button from '$lib/components/Button.svelte';
+	import ErrorNotice from '$lib/components/ErrorNotice.svelte';
+	import FormSelect from '$lib/components/FormSelect.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -7,57 +13,41 @@
 
 <h1 class="text-foreground flex items-center gap-2 text-2xl font-bold">
 	<KeyRound size={22} class="text-primary" aria-hidden="true" />
-	開発用ログイン
+	{m.devlogin_heading()}
 </h1>
 <p class="text-muted mt-1 text-sm">
-	design.md 8.4節: ID/PW+TOTPの本実装の代わりに、内部ユーザーを選ぶだけの開発用スタブです。
+	{m.devlogin_hint()}
 </p>
 
 {#if data.currentPerson}
 	<p class="text-foreground mt-4 text-sm">
-		現在ログイン中: <strong>{data.currentPerson.name}</strong>
+		{m.devlogin_current_user_prefix()} <strong>{data.currentPerson.name}</strong>
 	</p>
 {/if}
 
 {#if form?.message}
-	<p class="text-danger mt-4 flex items-center gap-1.5 text-sm">
-		<AlertTriangle size={16} aria-hidden="true" />
-		{form.message}
-	</p>
+	<ErrorNotice message={form.message} class="mt-4" />
 {/if}
 
 {#if data.persons.length === 0}
 	<p class="text-muted mt-4 text-sm">
-		内部ユーザーがまだいません。先にseedスクリプトなどで作成してください。
+		{m.devlogin_no_users()}
 	</p>
 {:else}
 	<form method="POST" class="mt-4 flex items-end gap-2">
-		<select
-			name="personId"
-			required
-			class="border-border bg-background text-foreground focus:border-primary focus:ring-primary rounded-md px-2 py-1.5 text-sm"
-		>
-			<option value="" selected disabled>選択してください</option>
+		<FormSelect name="personId" required>
+			<option value="" selected disabled>{m.select_placeholder()}</option>
 			{#each data.persons as person (person.id)}
 				<option value={person.id}>{person.name}{person.email ? `（${person.email}）` : ''}</option>
 			{/each}
-		</select>
-		<button
-			type="submit"
-			class="bg-primary text-primary-foreground flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium hover:opacity-90"
-		>
+		</FormSelect>
+		<Button type="submit">
 			<LogIn size={16} aria-hidden="true" />
-			ログイン
-		</button>
+			{m.devlogin_submit()}
+		</Button>
 	</form>
 {/if}
 
 <p class="mt-6">
-	<a
-		href="/"
-		class="text-primary flex w-fit items-center gap-1 text-sm no-underline hover:underline"
-	>
-		<ArrowLeft size={14} aria-hidden="true" />
-		トップへ戻る
-	</a>
+	<BackLink href="/">{m.nav_back_home()}</BackLink>
 </p>

@@ -1,4 +1,9 @@
-import { decideTimeline, evolveTimeline, type TimelineError, type TimelineEvent } from '$lib/core/timeline';
+import {
+	decideTimeline,
+	evolveTimeline,
+	type TimelineError,
+	type TimelineEvent,
+} from '$lib/core/timeline';
 import { projectTimelineBandView } from '$lib/core/projections/timeline-band-view';
 import type { SqliteDb } from '../../db';
 import { appendEvent, getEventsByTarget } from '../repository/event-repository';
@@ -31,10 +36,10 @@ export async function addCut(db: SqliteDb, input: AddCutInput): Promise<AddCutRe
 				number: input.number,
 				sortOrder: input.sortOrder,
 				plannedFrames: input.plannedFrames,
-				sceneTags: input.sceneTags
+				sceneTags: input.sceneTags,
 			},
 			state,
-			{ titleExists: true } // AddCutのdecideはtitleExistsを参照しない
+			{ titleExists: true }, // AddCutのdecideはtitleExistsを参照しない
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 
@@ -45,14 +50,14 @@ export async function addCut(db: SqliteDb, input: AddCutInput): Promise<AddCutRe
 			number: input.number,
 			sortOrder: input.sortOrder,
 			plannedFrames: input.plannedFrames,
-			sceneTags: input.sceneTags
+			sceneTags: input.sceneTags,
 		});
 
 		// design.md 2.3節/4.1節: 同一トランザクションでtimeline_band_view投影を更新する
 		const cuts = await listCutsByTimeline(tx, input.timelineId);
 		const bandRows = projectTimelineBandView(
 			input.timelineId,
-			cuts.map((c) => ({ cutId: c.id, sortOrder: c.sortOrder, plannedFrames: c.plannedFrames }))
+			cuts.map((c) => ({ cutId: c.id, sortOrder: c.sortOrder, plannedFrames: c.plannedFrames })),
 		);
 		// design.md 4.0.1節: CoreはTimelineItem/物理スキーマを知らない（cutIdのまま）ため、
 		// ここShell側でtimeline_item_id/item_typeへ変換してから投影テーブルへ書く。
@@ -65,8 +70,8 @@ export async function addCut(db: SqliteDb, input: AddCutInput): Promise<AddCutRe
 				itemType: 'cut' as const,
 				sortOrder: row.sortOrder,
 				offsetFrames: row.offsetFrames,
-				widthFrames: row.widthFrames
-			}))
+				widthFrames: row.widthFrames,
+			})),
 		);
 
 		return { ok: true, cutId };

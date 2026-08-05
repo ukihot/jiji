@@ -18,7 +18,7 @@
 		void fetch('/api/theme', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ theme: nextTheme, mode: nextMode })
+			body: JSON.stringify({ theme: nextTheme, mode: nextMode }),
 		});
 	}
 
@@ -37,7 +37,7 @@
 	<button
 		type="button"
 		onclick={toggleMode}
-		class="rounded-md border border-border p-1.5 text-foreground transition-colors hover:bg-surface"
+		class="border-border text-foreground hover:bg-surface rounded-md border p-1.5 transition-colors"
 		aria-label={currentMode === 'light' ? 'ダークモードに切り替え' : 'ライトモードに切り替え'}
 		title={currentMode === 'light' ? 'ダークモードに切り替え' : 'ライトモードに切り替え'}
 	>
@@ -48,13 +48,13 @@
 		{/if}
 	</button>
 
-	<label class="flex items-center gap-1.5 text-sm text-muted">
+	<label class="text-muted flex items-center gap-1.5 text-sm">
 		<Palette size={16} aria-hidden="true" />
 		<span class="sr-only">テーマ</span>
 		<select
 			value={currentTheme}
 			onchange={onThemeChange}
-			class="rounded-md border-border bg-surface py-1 pr-7 pl-2 text-sm text-foreground"
+			class="border-border bg-surface text-foreground rounded-md py-1 pr-7 pl-2 text-sm"
 		>
 			{#each THEMES as t (t.id)}
 				<option value={t.id}>{t.name}</option>

@@ -19,10 +19,10 @@ export async function hasAtLeast(
 	titleId: string,
 	min: PermissionLevel,
 	now: Date = new Date(),
-	timelineId?: string
+	timelineId?: string,
 ): Promise<boolean> {
 	const scopes: Array<{ scopeType: 'title' | 'timeline'; scopeId: string }> = [
-		{ scopeType: 'title', scopeId: titleId }
+		{ scopeType: 'title', scopeId: titleId },
 	];
 	if (timelineId) scopes.push({ scopeType: 'timeline', scopeId: timelineId });
 
@@ -32,7 +32,7 @@ export async function hasAtLeast(
 			(row) =>
 				row.personId === personId &&
 				meetsLevel(row.permissionLevel, min) &&
-				isMembershipActive({ expiresAt: row.expiresAt, revokedAt: row.revokedAt }, now)
+				isMembershipActive({ expiresAt: row.expiresAt, revokedAt: row.revokedAt }, now),
 		);
 		if (matched) return true;
 	}

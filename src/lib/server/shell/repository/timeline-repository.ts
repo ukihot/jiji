@@ -36,13 +36,23 @@ export interface TimelineRow {
 	episode: number;
 }
 
-export async function getTimeline(db: SqliteQueryable, timelineId: string): Promise<TimelineRow | null> {
+export async function getTimeline(
+	db: SqliteQueryable,
+	timelineId: string,
+): Promise<TimelineRow | null> {
 	const rows = await db.select().from(timeline).where(eq(timeline.id, timelineId));
 	return rows[0] ?? null;
 }
 
-export async function listTimelinesByTitle(db: SqliteQueryable, titleId: string): Promise<TimelineRow[]> {
-	return db.select().from(timeline).where(eq(timeline.titleId, titleId)).orderBy(asc(timeline.episode));
+export async function listTimelinesByTitle(
+	db: SqliteQueryable,
+	titleId: string,
+): Promise<TimelineRow[]> {
+	return db
+		.select()
+		.from(timeline)
+		.where(eq(timeline.titleId, titleId))
+		.orderBy(asc(timeline.episode));
 }
 
 export async function insertTimeline(db: SqliteQueryable, row: TimelineRow): Promise<void> {
@@ -62,7 +72,10 @@ export interface CutRow {
 	sceneTags: string[];
 }
 
-export async function listCutsByTimeline(db: SqliteQueryable, timelineId: string): Promise<CutRow[]> {
+export async function listCutsByTimeline(
+	db: SqliteQueryable,
+	timelineId: string,
+): Promise<CutRow[]> {
 	const rows = await db
 		.select({
 			id: timelineItem.id,
@@ -70,7 +83,7 @@ export async function listCutsByTimeline(db: SqliteQueryable, timelineId: string
 			number: timelineItem.label,
 			sortOrder: timelineItem.sortOrder,
 			plannedFrames: timelineItem.widthFrames,
-			sceneTags: cut.sceneTags
+			sceneTags: cut.sceneTags,
 		})
 		.from(timelineItem)
 		.innerJoin(cut, eq(cut.id, timelineItem.id))
@@ -83,7 +96,7 @@ export async function listCutsByTimeline(db: SqliteQueryable, timelineId: string
 		number: row.number,
 		sortOrder: row.sortOrder,
 		plannedFrames: row.plannedFrames ?? 0,
-		sceneTags: row.sceneTags
+		sceneTags: row.sceneTags,
 	}));
 }
 
@@ -98,7 +111,7 @@ export async function insertCut(db: SqliteQueryable, row: CutRow): Promise<void>
 		type: 'cut',
 		label: row.number,
 		sortOrder: row.sortOrder,
-		widthFrames: row.plannedFrames
+		widthFrames: row.plannedFrames,
 	});
 	await db.insert(cut).values({ id: row.id, sceneTags: row.sceneTags });
 }
@@ -114,7 +127,10 @@ export interface BandViewRow {
 	widthFrames: number;
 }
 
-export async function listBandView(db: SqliteQueryable, timelineId: string): Promise<BandViewRow[]> {
+export async function listBandView(
+	db: SqliteQueryable,
+	timelineId: string,
+): Promise<BandViewRow[]> {
 	return db
 		.select()
 		.from(timelineBandView)
@@ -126,7 +142,11 @@ export async function listBandView(db: SqliteQueryable, timelineId: string): Pro
  * design.md core/projections/timeline-band-view.tsの計算結果で、そのtimelineの帯を丸ごと置き換える。
  * カット数がまだ少ないMVPでは、差分パッチより全再計算のほうが単純で壊れにくい。
  */
-export async function replaceBandView(db: SqliteQueryable, timelineId: string, rows: readonly BandViewRow[]): Promise<void> {
+export async function replaceBandView(
+	db: SqliteQueryable,
+	timelineId: string,
+	rows: readonly BandViewRow[],
+): Promise<void> {
 	await db.delete(timelineBandView).where(eq(timelineBandView.timelineId, timelineId));
 	for (const row of rows) {
 		await db.insert(timelineBandView).values(row);

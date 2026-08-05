@@ -17,13 +17,21 @@ export type CreatePersonResult =
 	| { ok: true; personId: string }
 	| { ok: false; error: { kind: 'blank_name' } | { kind: 'email_required_for_internal' } };
 
-export async function createPerson(db: SqliteDb, input: CreatePersonInput): Promise<CreatePersonResult> {
+export async function createPerson(
+	db: SqliteDb,
+	input: CreatePersonInput,
+): Promise<CreatePersonResult> {
 	if (input.name.trim().length === 0) return { ok: false, error: { kind: 'blank_name' } };
 	if (input.accountType === 'internal' && (!input.email || input.email.trim().length === 0)) {
 		return { ok: false, error: { kind: 'email_required_for_internal' } };
 	}
 
 	const personId = crypto.randomUUID();
-	await insertPerson(db, { id: personId, name: input.name, email: input.email, accountType: input.accountType });
+	await insertPerson(db, {
+		id: personId,
+		name: input.name,
+		email: input.email,
+		accountType: input.accountType,
+	});
 	return { ok: true, personId };
 }

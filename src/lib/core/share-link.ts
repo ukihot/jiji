@@ -66,7 +66,7 @@ export interface ShareLinkContext {
 
 export function decideShareLink(
 	command: ShareLinkCommand,
-	context: ShareLinkContext
+	context: ShareLinkContext,
 ): ShareLinkDecideResult {
 	switch (command.type) {
 		case 'CreateShareLink': {
@@ -77,7 +77,10 @@ export function decideShareLink(
 				return { ok: false, error: { kind: 'expiry_in_past' } };
 			}
 			if (command.expiresAt.getTime() - context.now.getTime() > SHARE_LINK_MAX_DURATION_MS) {
-				return { ok: false, error: { kind: 'expiry_too_far', maxDurationMs: SHARE_LINK_MAX_DURATION_MS } };
+				return {
+					ok: false,
+					error: { kind: 'expiry_too_far', maxDurationMs: SHARE_LINK_MAX_DURATION_MS },
+				};
 			}
 			return {
 				ok: true,
@@ -90,10 +93,10 @@ export function decideShareLink(
 							permissionLevel: command.permissionLevel,
 							createdBy: command.createdBy,
 							createdAt: context.now.toISOString(),
-							expiresAt: command.expiresAt.toISOString()
-						}
-					}
-				]
+							expiresAt: command.expiresAt.toISOString(),
+						},
+					},
+				],
 			};
 		}
 
@@ -112,10 +115,10 @@ export function decideShareLink(
 							shareLinkId: command.shareLinkId,
 							personId: command.personId,
 							name: command.name,
-							claimedAt: context.now.toISOString()
-						}
-					}
-				]
+							claimedAt: context.now.toISOString(),
+						},
+					},
+				],
 			};
 		}
 
@@ -129,10 +132,10 @@ export function decideShareLink(
 						payload: {
 							shareLinkId: command.shareLinkId,
 							revokedBy: command.revokedBy,
-							revokedAt: context.now.toISOString()
-						}
-					}
-				]
+							revokedAt: context.now.toISOString(),
+						},
+					},
+				],
 			};
 		}
 	}

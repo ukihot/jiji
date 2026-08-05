@@ -17,5 +17,5 @@ export const actions: Actions = {
 		}
 		setCurrentPersonId(cookies, personId);
 		redirect(303, '/');
-	}
+	},
 };

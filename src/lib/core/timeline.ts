@@ -82,7 +82,7 @@ export interface TimelineContext {
 export function decideTimeline(
 	command: TimelineCommand,
 	state: TimelineState,
-	context: TimelineContext
+	context: TimelineContext,
 ): TimelineDecideResult {
 	switch (command.type) {
 		case 'CreateTitle': {
@@ -92,8 +92,8 @@ export function decideTimeline(
 			return {
 				ok: true,
 				events: [
-					{ type: 'TitleCreated', payload: { titleId: command.titleId, name: command.name } }
-				]
+					{ type: 'TitleCreated', payload: { titleId: command.titleId, name: command.name } },
+				],
 			};
 		}
 
@@ -113,10 +113,10 @@ export function decideTimeline(
 							timelineId: command.timelineId,
 							titleId: command.titleId,
 							season: command.season,
-							episode: command.episode
-						}
-					}
-				]
+							episode: command.episode,
+						},
+					},
+				],
 			};
 		}
 
@@ -141,10 +141,10 @@ export function decideTimeline(
 							number: command.number,
 							sortOrder: command.sortOrder,
 							plannedFrames: command.plannedFrames,
-							sceneTags: command.sceneTags
-						}
-					}
-				]
+							sceneTags: command.sceneTags,
+						},
+					},
+				],
 			};
 		}
 	}

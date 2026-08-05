@@ -4,7 +4,7 @@ import {
 	evolveMembership,
 	isMembershipActive,
 	type MembershipContext,
-	type MembershipEvent
+	type MembershipEvent,
 } from './membership';
 
 const now = new Date('2026-08-05T00:00:00.000Z');
@@ -12,7 +12,7 @@ const now = new Date('2026-08-05T00:00:00.000Z');
 const baseContext: MembershipContext = {
 	now,
 	activeAdminCountExcludingTarget: 1,
-	targetIsCurrentlyAdmin: false
+	targetIsCurrentlyAdmin: false,
 };
 
 describe('decideMembership: GrantMembership', () => {
@@ -28,9 +28,9 @@ describe('decideMembership: GrantMembership', () => {
 				permissionLevel: 'reviewer',
 				processScope: null,
 				grantedBy: 'admin1',
-				expiresAt: null
+				expiresAt: null,
 			},
-			baseContext
+			baseContext,
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -47,9 +47,9 @@ describe('decideMembership: GrantMembership', () => {
 				permissionLevel: 'contributor',
 				processScope: ['作画'],
 				grantedBy: 'admin1',
-				expiresAt: null
+				expiresAt: null,
 			},
-			baseContext
+			baseContext,
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -66,9 +66,9 @@ describe('decideMembership: GrantMembership', () => {
 				permissionLevel: 'viewer',
 				processScope: null,
 				grantedBy: 'admin1',
-				expiresAt: null
+				expiresAt: null,
 			},
-			baseContext
+			baseContext,
 		);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe('expiry_required');
@@ -86,9 +86,9 @@ describe('decideMembership: GrantMembership', () => {
 				permissionLevel: 'contributor',
 				processScope: ['作画'],
 				grantedBy: 'admin1',
-				expiresAt: new Date('2026-09-30T00:00:00.000Z')
+				expiresAt: new Date('2026-09-30T00:00:00.000Z'),
 			},
-			baseContext
+			baseContext,
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -97,8 +97,13 @@ describe('decideMembership: GrantMembership', () => {
 describe('decideMembership: last-admin lockout', () => {
 	it('rejects downgrading the only remaining admin', () => {
 		const result = decideMembership(
-			{ type: 'UpdateMembership', membershipId: 'm1', permissionLevel: 'reviewer', processScope: null },
-			{ now, activeAdminCountExcludingTarget: 0, targetIsCurrentlyAdmin: true }
+			{
+				type: 'UpdateMembership',
+				membershipId: 'm1',
+				permissionLevel: 'reviewer',
+				processScope: null,
+			},
+			{ now, activeAdminCountExcludingTarget: 0, targetIsCurrentlyAdmin: true },
 		);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe('last_admin_lockout');
@@ -106,8 +111,13 @@ describe('decideMembership: last-admin lockout', () => {
 
 	it('allows downgrading an admin when another admin remains', () => {
 		const result = decideMembership(
-			{ type: 'UpdateMembership', membershipId: 'm1', permissionLevel: 'reviewer', processScope: null },
-			{ now, activeAdminCountExcludingTarget: 1, targetIsCurrentlyAdmin: true }
+			{
+				type: 'UpdateMembership',
+				membershipId: 'm1',
+				permissionLevel: 'reviewer',
+				processScope: null,
+			},
+			{ now, activeAdminCountExcludingTarget: 1, targetIsCurrentlyAdmin: true },
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -115,7 +125,7 @@ describe('decideMembership: last-admin lockout', () => {
 	it('rejects revoking the only remaining admin', () => {
 		const result = decideMembership(
 			{ type: 'RevokeMembership', membershipId: 'm1', revokedBy: 'admin2' },
-			{ now, activeAdminCountExcludingTarget: 0, targetIsCurrentlyAdmin: true }
+			{ now, activeAdminCountExcludingTarget: 0, targetIsCurrentlyAdmin: true },
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -123,7 +133,7 @@ describe('decideMembership: last-admin lockout', () => {
 	it('allows revoking a non-admin regardless of admin count', () => {
 		const result = decideMembership(
 			{ type: 'RevokeMembership', membershipId: 'm1', revokedBy: 'admin2' },
-			{ now, activeAdminCountExcludingTarget: 0, targetIsCurrentlyAdmin: false }
+			{ now, activeAdminCountExcludingTarget: 0, targetIsCurrentlyAdmin: false },
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -143,14 +153,17 @@ describe('evolveMembership', () => {
 					processScope: null,
 					grantedBy: 'admin1',
 					grantedAt: now.toISOString(),
-					expiresAt: null
-				}
+					expiresAt: null,
+				},
 			},
 			{
 				type: 'MembershipUpdated',
-				payload: { membershipId: 'm1', permissionLevel: 'admin', processScope: null }
+				payload: { membershipId: 'm1', permissionLevel: 'admin', processScope: null },
 			},
-			{ type: 'MembershipRevoked', payload: { membershipId: 'm1', revokedBy: 'admin2', revokedAt: now.toISOString() } }
+			{
+				type: 'MembershipRevoked',
+				payload: { membershipId: 'm1', revokedBy: 'admin2', revokedAt: now.toISOString() },
+			},
 		];
 		const state = evolveMembership(events);
 		expect(state).toEqual({ permissionLevel: 'admin', revoked: true });

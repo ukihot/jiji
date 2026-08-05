@@ -10,7 +10,7 @@ export interface ShareLinkView extends ShareLinkRow {
 export async function listShareLinksForCuts(
 	db: SqliteDb,
 	cutIds: readonly string[],
-	now: Date = new Date()
+	now: Date = new Date(),
 ): Promise<ShareLinkView[]> {
 	const cutIdSet = new Set(cutIds);
 	const links = await listShareLinks(db);

@@ -21,7 +21,7 @@ export interface BandViewRow {
 
 export function projectTimelineBandView(
 	timelineId: string,
-	cuts: readonly CutForBandView[]
+	cuts: readonly CutForBandView[],
 ): BandViewRow[] {
 	const sorted = [...cuts].sort((a, b) => a.sortOrder - b.sortOrder);
 	let offset = 0;
@@ -32,7 +32,7 @@ export function projectTimelineBandView(
 			timelineId,
 			sortOrder: cut.sortOrder,
 			offsetFrames: offset,
-			widthFrames: cut.plannedFrames
+			widthFrames: cut.plannedFrames,
 		});
 		offset += cut.plannedFrames;
 	}

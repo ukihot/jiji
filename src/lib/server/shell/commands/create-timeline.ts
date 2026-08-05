@@ -9,9 +9,14 @@ export interface CreateTimelineInput {
 	episode: number;
 }
 
-export type CreateTimelineResult = { ok: true; timelineId: string } | { ok: false; error: TimelineError };
+export type CreateTimelineResult =
+	| { ok: true; timelineId: string }
+	| { ok: false; error: TimelineError };
 
-export async function createTimeline(db: SqliteDb, input: CreateTimelineInput): Promise<CreateTimelineResult> {
+export async function createTimeline(
+	db: SqliteDb,
+	input: CreateTimelineInput,
+): Promise<CreateTimelineResult> {
 	const timelineId = crypto.randomUUID();
 	const now = new Date();
 	return db.transaction(async (tx): Promise<CreateTimelineResult> => {
@@ -21,15 +26,20 @@ export async function createTimeline(db: SqliteDb, input: CreateTimelineInput): 
 				timelineId,
 				titleId: input.titleId,
 				season: input.season,
-				episode: input.episode
+				episode: input.episode,
 			},
 			{ cutNumbers: new Set(), cutSortOrders: new Set() },
-			{ titleExists: await titleExists(tx, input.titleId) }
+			{ titleExists: await titleExists(tx, input.titleId) },
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 
 		await appendEvent(tx, 'timeline', timelineId, decision.events[0], now);
-		await insertTimeline(tx, { id: timelineId, titleId: input.titleId, season: input.season, episode: input.episode });
+		await insertTimeline(tx, {
+			id: timelineId,
+			titleId: input.titleId,
+			season: input.season,
+			episode: input.episode,
+		});
 
 		return { ok: true, timelineId };
 	});

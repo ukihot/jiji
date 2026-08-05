@@ -1,8 +1,20 @@
-import { decideMembership, evolveMembership, type MembershipError, type MembershipEvent, type PermissionLevel } from '$lib/core/membership';
+import {
+	decideMembership,
+	evolveMembership,
+	type MembershipError,
+	type MembershipEvent,
+	type PermissionLevel,
+} from '$lib/core/membership';
 import { projectMembershipState } from '$lib/core/projections/membership-state';
 import type { SqliteDb } from '../../db';
 import { appendEvent, getEventsByTarget } from '../repository/event-repository';
-import { countActiveAdmins, getMembership, toStateRow, updateMembershipPermission, upsertMembershipState } from '../repository/membership-repository';
+import {
+	countActiveAdmins,
+	getMembership,
+	toStateRow,
+	updateMembershipPermission,
+	upsertMembershipState,
+} from '../repository/membership-repository';
 
 export interface UpdateMembershipInput {
 	membershipId: string;
@@ -15,7 +27,10 @@ export type UpdateMembershipResult =
 	| { ok: false; error: MembershipError | { kind: 'membership_not_found' } };
 
 /** design.md 8.3節「最後のadminロックアウト防止」を通す権限変更コマンド */
-export async function updateMembership(db: SqliteDb, input: UpdateMembershipInput): Promise<UpdateMembershipResult> {
+export async function updateMembership(
+	db: SqliteDb,
+	input: UpdateMembershipInput,
+): Promise<UpdateMembershipResult> {
 	const now = new Date();
 	return db.transaction(async (tx): Promise<UpdateMembershipResult> => {
 		const current = await getMembership(tx, input.membershipId);
@@ -32,7 +47,7 @@ export async function updateMembership(db: SqliteDb, input: UpdateMembershipInpu
 			current.scopeType,
 			current.scopeId,
 			now,
-			input.membershipId
+			input.membershipId,
 		);
 
 		const decision = decideMembership(
@@ -40,15 +55,20 @@ export async function updateMembership(db: SqliteDb, input: UpdateMembershipInpu
 				type: 'UpdateMembership',
 				membershipId: input.membershipId,
 				permissionLevel: input.permissionLevel,
-				processScope: input.processScope
+				processScope: input.processScope,
 			},
-			{ now, activeAdminCountExcludingTarget, targetIsCurrentlyAdmin }
+			{ now, activeAdminCountExcludingTarget, targetIsCurrentlyAdmin },
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 
 		const domainEvent = decision.events[0];
 		await appendEvent(tx, 'membership', input.membershipId, domainEvent, now);
-		await updateMembershipPermission(tx, input.membershipId, input.permissionLevel, input.processScope);
+		await updateMembershipPermission(
+			tx,
+			input.membershipId,
+			input.permissionLevel,
+			input.processScope,
+		);
 		await upsertMembershipState(tx, projectMembershipState(domainEvent, toStateRow(current)));
 
 		return { ok: true };

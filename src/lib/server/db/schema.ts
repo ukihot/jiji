@@ -13,7 +13,7 @@ export const event = sqliteTable('event', {
 	payload: text('payload', { mode: 'json' }).notNull(),
 	prevHash: text('prev_hash'),
 	hash: text('hash').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull()
+	createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
 /**
@@ -22,7 +22,7 @@ export const event = sqliteTable('event', {
  */
 export const title = sqliteTable('title', {
 	id: text('id').primaryKey(),
-	name: text('name').notNull()
+	name: text('name').notNull(),
 });
 
 // design.md 4章: timeline | id, title_id, season, episode
@@ -32,7 +32,7 @@ export const timeline = sqliteTable('timeline', {
 		.notNull()
 		.references(() => title.id),
 	season: text('season').notNull(),
-	episode: integer('episode').notNull()
+	episode: integer('episode').notNull(),
 });
 
 /**
@@ -48,7 +48,7 @@ export const timelineItem = sqliteTable('timeline_item', {
 	type: text('type').$type<'cut' | 'audio' | 'transition' | 'marker'>().notNull(),
 	label: text('label').notNull(),
 	sortOrder: integer('sort_order').notNull(),
-	widthFrames: integer('width_frames')
+	widthFrames: integer('width_frames'),
 });
 
 /**
@@ -60,7 +60,7 @@ export const cut = sqliteTable('cut', {
 	id: text('id')
 		.primaryKey()
 		.references(() => timelineItem.id),
-	sceneTags: text('scene_tags', { mode: 'json' }).$type<string[]>().notNull()
+	sceneTags: text('scene_tags', { mode: 'json' }).$type<string[]>().notNull(),
 });
 
 /**
@@ -72,7 +72,7 @@ export const person = sqliteTable('person', {
 	id: text('id').primaryKey(),
 	name: text('name').notNull(),
 	email: text('email').unique(),
-	accountType: text('account_type').$type<'internal' | 'external'>().notNull()
+	accountType: text('account_type').$type<'internal' | 'external'>().notNull(),
 });
 
 /**
@@ -96,7 +96,7 @@ export const membership = sqliteTable('membership', {
 	grantedAt: integer('granted_at', { mode: 'timestamp_ms' }).notNull(),
 	expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
 	revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
-	revokedBy: text('revoked_by').references(() => person.id)
+	revokedBy: text('revoked_by').references(() => person.id),
 });
 
 /**
@@ -116,7 +116,7 @@ export const shareLink = sqliteTable('share_link', {
 		.notNull()
 		.references(() => person.id),
 	createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-	revokedAt: integer('revoked_at', { mode: 'timestamp_ms' })
+	revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
 });
 
 // ---- 投影テーブル（design.md 4.1節）：eventが正本。ここはCoreのproject関数の出力キャッシュ ----
@@ -129,7 +129,7 @@ export const timelineBandView = sqliteTable('timeline_band_view', {
 	itemType: text('item_type').$type<'cut' | 'audio' | 'transition' | 'marker'>().notNull(),
 	sortOrder: integer('sort_order').notNull(),
 	offsetFrames: integer('offset_frames').notNull(),
-	widthFrames: integer('width_frames').notNull()
+	widthFrames: integer('width_frames').notNull(),
 });
 
 // design.md 4.1節/8.2節: membership_state
@@ -144,5 +144,5 @@ export const membershipState = sqliteTable('membership_state', {
 	processScope: text('process_scope', { mode: 'json' }).$type<string[] | null>(),
 	grantedAt: integer('granted_at', { mode: 'timestamp_ms' }).notNull(),
 	expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
-	revokedAt: integer('revoked_at', { mode: 'timestamp_ms' })
+	revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
 });

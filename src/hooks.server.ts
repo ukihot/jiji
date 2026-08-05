@@ -7,7 +7,14 @@ import { getCurrentPersonId } from '$lib/server/auth/internal';
 import { getShareTokenFromCookie } from '$lib/server/auth/share-token';
 import { getPerson } from '$lib/server/shell/repository/person-repository';
 import { resolveClaimedPersonByToken } from '$lib/server/shell/queries/resolve-share-link';
-import { DEFAULT_MODE, DEFAULT_THEME, MODE_COOKIE, THEME_COOKIE, isThemeId, isThemeMode } from '$lib/theme';
+import {
+	DEFAULT_MODE,
+	DEFAULT_THEME,
+	MODE_COOKIE,
+	THEME_COOKIE,
+	isThemeId,
+	isThemeMode,
+} from '$lib/theme';
 
 const handleParaglide: Handle = ({ event, resolve }) =>
 	paraglideMiddleware(event.request, ({ request, locale }) => {
@@ -15,7 +22,9 @@ const handleParaglide: Handle = ({ event, resolve }) =>
 
 		return resolve(event, {
 			transformPageChunk: ({ html }) =>
-				html.replace('%paraglide.lang%', locale).replace('%paraglide.dir%', getTextDirection(locale))
+				html
+					.replace('%paraglide.lang%', locale)
+					.replace('%paraglide.dir%', getTextDirection(locale)),
 		});
 	});
 
@@ -30,7 +39,8 @@ const handleTheme: Handle = ({ event, resolve }) => {
 	const mode = isThemeMode(modeCookie) ? modeCookie : DEFAULT_MODE;
 
 	return resolve(event, {
-		transformPageChunk: ({ html }) => html.replace('%app.theme%', theme).replace('%app.mode%', mode)
+		transformPageChunk: ({ html }) =>
+			html.replace('%app.theme%', theme).replace('%app.mode%', mode),
 	});
 };
 

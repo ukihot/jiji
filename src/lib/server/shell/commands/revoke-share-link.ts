@@ -1,4 +1,9 @@
-import { decideShareLink, evolveShareLink, type ShareLinkError, type ShareLinkEvent } from '$lib/core/share-link';
+import {
+	decideShareLink,
+	evolveShareLink,
+	type ShareLinkError,
+	type ShareLinkEvent,
+} from '$lib/core/share-link';
 import type { SqliteDb } from '../../db';
 import { appendEvent, getEventsByTarget } from '../repository/event-repository';
 import { getShareLink, setRevoked } from '../repository/share-link-repository';
@@ -8,9 +13,14 @@ export interface RevokeShareLinkInput {
 	revokedBy: string;
 }
 
-export type RevokeShareLinkResult = { ok: true } | { ok: false; error: ShareLinkError | { kind: 'not_found' } };
+export type RevokeShareLinkResult =
+	| { ok: true }
+	| { ok: false; error: ShareLinkError | { kind: 'not_found' } };
 
-export async function revokeShareLink(db: SqliteDb, input: RevokeShareLinkInput): Promise<RevokeShareLinkResult> {
+export async function revokeShareLink(
+	db: SqliteDb,
+	input: RevokeShareLinkInput,
+): Promise<RevokeShareLinkResult> {
 	const now = new Date();
 	return db.transaction(async (tx): Promise<RevokeShareLinkResult> => {
 		const link = await getShareLink(tx, input.shareLinkId);
@@ -22,7 +32,12 @@ export async function revokeShareLink(db: SqliteDb, input: RevokeShareLinkInput)
 
 		const decision = decideShareLink(
 			{ type: 'RevokeShareLink', shareLinkId: input.shareLinkId, revokedBy: input.revokedBy },
-			{ now, isActive: true, alreadyClaimedPersonId: aggregate.claimedPersonId, alreadyRevoked: aggregate.revoked }
+			{
+				now,
+				isActive: true,
+				alreadyClaimedPersonId: aggregate.claimedPersonId,
+				alreadyRevoked: aggregate.revoked,
+			},
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 

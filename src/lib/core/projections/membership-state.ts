@@ -19,7 +19,7 @@ export interface MembershipStateRow {
 
 export function projectMembershipState(
 	event: MembershipEvent,
-	current: MembershipStateRow | null
+	current: MembershipStateRow | null,
 ): MembershipStateRow {
 	switch (event.type) {
 		case 'MembershipGranted':
@@ -32,7 +32,7 @@ export function projectMembershipState(
 				processScope: event.payload.processScope,
 				grantedAt: new Date(event.payload.grantedAt),
 				expiresAt: event.payload.expiresAt ? new Date(event.payload.expiresAt) : null,
-				revokedAt: null
+				revokedAt: null,
 			};
 
 		case 'MembershipUpdated': {
@@ -42,7 +42,7 @@ export function projectMembershipState(
 			return {
 				...current,
 				permissionLevel: event.payload.permissionLevel,
-				processScope: event.payload.processScope
+				processScope: event.payload.processScope,
 			};
 		}
 

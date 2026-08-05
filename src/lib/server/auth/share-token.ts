@@ -22,5 +22,10 @@ export function getShareTokenFromCookie(cookies: Cookies): string | null {
 }
 
 export function setShareTokenCookie(cookies: Cookies, token: string, expiresAt: Date): void {
-	cookies.set(COOKIE_NAME, token, { path: '/', httpOnly: true, sameSite: 'lax', expires: expiresAt });
+	cookies.set(COOKIE_NAME, token, {
+		path: '/',
+		httpOnly: true,
+		sameSite: 'lax',
+		expires: expiresAt,
+	});
 }

@@ -13,7 +13,7 @@ export const THEMES = [
 	{ id: 'fukamidori', name: '深緑木立' },
 	{ id: 'hoshizukiyo', name: '星月夜' },
 	{ id: 'beniusurai', name: '紅薄氷' },
-	{ id: 'asaginami', name: '浅葱波' }
+	{ id: 'asaginami', name: '浅葱波' },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]['id'];

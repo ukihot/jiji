@@ -36,7 +36,7 @@ export function computeEventHash(prevHash: string | null, event: EventForHash): 
 	const material = canonicalJson({
 		type: event.type,
 		payload: event.payload,
-		createdAt: event.createdAt.toISOString()
+		createdAt: event.createdAt.toISOString(),
 	});
 	return createHash('sha256')
 		.update((prevHash ?? '') + material)

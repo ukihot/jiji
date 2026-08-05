@@ -33,5 +33,5 @@ export const actions: Actions = {
 		// design.md 8.5.2節: 「認証はトークン、識別は名前」。以降はこのCookieで本人として扱う
 		setShareTokenCookie(cookies, params.token, result.expiresAt);
 		return { success: true };
-	}
+	},
 };

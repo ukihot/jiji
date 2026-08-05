@@ -27,7 +27,7 @@ export type GrantMembershipResult =
 export async function grantMembershipInTx(
 	tx: SqliteQueryable,
 	input: GrantMembershipInput,
-	now: Date
+	now: Date,
 ): Promise<GrantMembershipResult> {
 	const membershipId = crypto.randomUUID();
 
@@ -45,10 +45,10 @@ export async function grantMembershipInTx(
 			permissionLevel: input.permissionLevel,
 			processScope: input.processScope,
 			grantedBy: input.grantedBy,
-			expiresAt: input.expiresAt
+			expiresAt: input.expiresAt,
 		},
 		// Grant時はロックアウト判定を使わないのでダミー値でよい
-		{ now, activeAdminCountExcludingTarget: 0, targetIsCurrentlyAdmin: false }
+		{ now, activeAdminCountExcludingTarget: 0, targetIsCurrentlyAdmin: false },
 	);
 	if (!decision.ok) return { ok: false, error: decision.error };
 
@@ -65,7 +65,7 @@ export async function grantMembershipInTx(
 		grantedAt: now,
 		expiresAt: input.expiresAt,
 		revokedAt: null,
-		revokedBy: null
+		revokedBy: null,
 	});
 	await upsertMembershipState(tx, projectMembershipState(domainEvent, null));
 
@@ -73,7 +73,10 @@ export async function grantMembershipInTx(
 }
 
 /** design.md 8章: Googleスプレッドシート共有を踏襲したmembership付与 */
-export async function grantMembership(db: SqliteDb, input: GrantMembershipInput): Promise<GrantMembershipResult> {
+export async function grantMembership(
+	db: SqliteDb,
+	input: GrantMembershipInput,
+): Promise<GrantMembershipResult> {
 	const now = new Date();
 	return db.transaction((tx) => grantMembershipInTx(tx, input, now));
 }

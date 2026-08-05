@@ -21,7 +21,11 @@ export async function listPersons(db: SqliteQueryable): Promise<PersonRow[]> {
 
 /** design.md 8.4節の開発用スタブログインで選べる相手（内部ユーザーのみ） */
 export async function listInternalPersons(db: SqliteQueryable): Promise<PersonRow[]> {
-	return db.select().from(person).where(eq(person.accountType, 'internal')).orderBy(asc(person.name));
+	return db
+		.select()
+		.from(person)
+		.where(eq(person.accountType, 'internal'))
+		.orderBy(asc(person.name));
 }
 
 export async function insertPerson(db: SqliteQueryable, row: PersonRow): Promise<void> {

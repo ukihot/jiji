@@ -1,5 +1,10 @@
 import type { SqliteDb } from '../../db';
-import { getTimeline, getTitle, listBandView, listCutsByTimeline } from '../repository/timeline-repository';
+import {
+	getTimeline,
+	getTitle,
+	listBandView,
+	listCutsByTimeline,
+} from '../repository/timeline-repository';
 
 /** design.md 7章 Timeline Viewerの最小表示に必要な形（帯表示用にoffset/widthを含む） */
 export interface TimelineViewCut {
@@ -19,13 +24,19 @@ export interface TimelineView {
 	totalFrames: number;
 }
 
-export async function getTimelineView(db: SqliteDb, titleId: string, timelineId: string): Promise<TimelineView | null> {
+export async function getTimelineView(
+	db: SqliteDb,
+	titleId: string,
+	timelineId: string,
+): Promise<TimelineView | null> {
 	const title = await getTitle(db, titleId);
 	const timeline = await getTimeline(db, timelineId);
 	if (!title || !timeline || timeline.titleId !== titleId) return null;
 
 	const cuts = await listCutsByTimeline(db, timelineId);
-	const band = new Map((await listBandView(db, timelineId)).map((row) => [row.timelineItemId, row]));
+	const band = new Map(
+		(await listBandView(db, timelineId)).map((row) => [row.timelineItemId, row]),
+	);
 
 	const viewCuts: TimelineViewCut[] = cuts.map((cut) => {
 		const bandRow = band.get(cut.id);
@@ -36,7 +47,7 @@ export async function getTimelineView(db: SqliteDb, titleId: string, timelineId:
 			plannedFrames: cut.plannedFrames,
 			sceneTags: cut.sceneTags,
 			offsetFrames: bandRow?.offsetFrames ?? 0,
-			widthFrames: bandRow?.widthFrames ?? cut.plannedFrames
+			widthFrames: bandRow?.widthFrames ?? cut.plannedFrames,
 		};
 	});
 
@@ -46,6 +57,6 @@ export async function getTimelineView(db: SqliteDb, titleId: string, timelineId:
 		title: { id: title.id, name: title.name },
 		timeline: { id: timeline.id, season: timeline.season, episode: timeline.episode },
 		cuts: viewCuts,
-		totalFrames
+		totalFrames,
 	};
 }

@@ -1,4 +1,8 @@
-import { decideShareLink, type ShareLinkError, type SharePermissionLevel } from '$lib/core/share-link';
+import {
+	decideShareLink,
+	type ShareLinkError,
+	type SharePermissionLevel,
+} from '$lib/core/share-link';
 import { generateShareToken, hashShareToken } from '../../auth/share-token';
 import type { SqliteDb } from '../../db';
 import { appendEvent } from '../repository/event-repository';
@@ -19,7 +23,10 @@ export type CreateShareLinkResult =
  * design.md 8.5節。戻り値のtokenはこの呼び出し時にしか手に入らない
  * （DBにはtokenHashしか保存しない。パスワードリセットトークンと同じ扱い）。
  */
-export async function createShareLink(db: SqliteDb, input: CreateShareLinkInput): Promise<CreateShareLinkResult> {
+export async function createShareLink(
+	db: SqliteDb,
+	input: CreateShareLinkInput,
+): Promise<CreateShareLinkResult> {
 	const shareLinkId = crypto.randomUUID();
 	const now = new Date();
 	const token = generateShareToken();
@@ -33,9 +40,9 @@ export async function createShareLink(db: SqliteDb, input: CreateShareLinkInput)
 				targetCutIds: input.targetCutIds,
 				permissionLevel: input.permissionLevel,
 				createdBy: input.createdBy,
-				expiresAt: input.expiresAt
+				expiresAt: input.expiresAt,
 			},
-			{ now, isActive: true, alreadyClaimedPersonId: null, alreadyRevoked: false }
+			{ now, isActive: true, alreadyClaimedPersonId: null, alreadyRevoked: false },
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 
@@ -49,7 +56,7 @@ export async function createShareLink(db: SqliteDb, input: CreateShareLinkInput)
 			expiresAt: input.expiresAt,
 			createdBy: input.createdBy,
 			createdAt: now,
-			revokedAt: null
+			revokedAt: null,
 		});
 
 		return { ok: true, shareLinkId, token };

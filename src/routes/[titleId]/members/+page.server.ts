@@ -21,14 +21,21 @@ function isPermissionLevel(value: unknown): value is PermissionLevel {
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const title = await getTitle(locals.db, params.titleId);
 	if (!title) error(404, '作品が見つかりません');
-	if (!locals.currentPerson || !(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin'))) {
+	if (
+		!locals.currentPerson ||
+		!(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin'))
+	) {
 		error(403, 'この作品の管理者だけがメンバー管理画面を開けます');
 	}
 
 	const timelines = await listTimelinesByTitle(locals.db, params.titleId);
 	const members = [
 		...(await listMembers(locals.db, 'title', params.titleId)),
-		...(await Promise.all(timelines.map((timeline) => listMembers(locals.db, 'timeline', timeline.id)))).flat()
+		...(
+			await Promise.all(
+				timelines.map((timeline) => listMembers(locals.db, 'timeline', timeline.id)),
+			)
+		).flat(),
 	];
 
 	return {
@@ -36,7 +43,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		timelines,
 		members,
 		persons: await listPersons(locals.db),
-		currentPerson: locals.currentPerson
+		currentPerson: locals.currentPerson,
 	};
 };
 
@@ -63,7 +70,9 @@ export const actions: Actions = {
 			personId = existingPersonId;
 		} else {
 			if (typeof newName !== 'string' || newName.trim().length === 0) {
-				return fail(400, { message: '既存メンバーを選ぶか、新しいメンバーの名前を入力してください' });
+				return fail(400, {
+					message: '既存メンバーを選ぶか、新しいメンバーの名前を入力してください',
+				});
 			}
 			if (newAccountType !== 'internal' && newAccountType !== 'external') {
 				return fail(400, { message: 'アカウント種別を選んでください' });
@@ -71,9 +80,12 @@ export const actions: Actions = {
 			const createResult = await createPerson(locals.db, {
 				name: newName,
 				email: typeof newEmail === 'string' && newEmail.trim().length > 0 ? newEmail : null,
-				accountType: newAccountType
+				accountType: newAccountType,
 			});
-			if (!createResult.ok) return fail(400, { message: '新しいメンバーを作成できませんでした（内部ユーザーはメール必須です）' });
+			if (!createResult.ok)
+				return fail(400, {
+					message: '新しいメンバーを作成できませんでした（内部ユーザーはメール必須です）',
+				});
 			personId = createResult.personId;
 		}
 
@@ -83,7 +95,9 @@ export const actions: Actions = {
 
 		const resolvedScopeType: 'title' | 'timeline' = scopeType === 'timeline' ? 'timeline' : 'title';
 		const scopeId =
-			resolvedScopeType === 'timeline' && typeof scopeTimelineId === 'string' && scopeTimelineId.length > 0
+			resolvedScopeType === 'timeline' &&
+			typeof scopeTimelineId === 'string' &&
+			scopeTimelineId.length > 0
 				? scopeTimelineId
 				: params.titleId;
 
@@ -95,7 +109,8 @@ export const actions: Actions = {
 						.filter((tag) => tag.length > 0)
 				: null;
 
-		const expiresAt = typeof expiresAtRaw === 'string' && expiresAtRaw.length > 0 ? new Date(expiresAtRaw) : null;
+		const expiresAt =
+			typeof expiresAtRaw === 'string' && expiresAtRaw.length > 0 ? new Date(expiresAtRaw) : null;
 
 		const result = await grantMembership(locals.db, {
 			personId,
@@ -104,7 +119,7 @@ export const actions: Actions = {
 			permissionLevel,
 			processScope,
 			grantedBy: locals.currentPerson.id,
-			expiresAt
+			expiresAt,
 		});
 
 		if (!result.ok) {
@@ -130,7 +145,8 @@ export const actions: Actions = {
 		const membershipId = formData.get('membershipId');
 		const permissionLevel = formData.get('permissionLevel');
 		if (typeof membershipId !== 'string') return fail(400, { message: '不正なリクエストです' });
-		if (!isPermissionLevel(permissionLevel)) return fail(400, { message: '権限レベルを選んでください' });
+		if (!isPermissionLevel(permissionLevel))
+			return fail(400, { message: '権限レベルを選んでください' });
 
 		const current = await getMembership(locals.db, membershipId);
 		if (!current) return fail(404, { message: '見つかりません' });
@@ -138,7 +154,7 @@ export const actions: Actions = {
 		const result = await updateMembership(locals.db, {
 			membershipId,
 			permissionLevel,
-			processScope: current.processScope
+			processScope: current.processScope,
 		});
 		if (!result.ok) {
 			const message =
@@ -160,7 +176,10 @@ export const actions: Actions = {
 		const membershipId = formData.get('membershipId');
 		if (typeof membershipId !== 'string') return fail(400, { message: '不正なリクエストです' });
 
-		const result = await revokeMembership(locals.db, { membershipId, revokedBy: locals.currentPerson.id });
+		const result = await revokeMembership(locals.db, {
+			membershipId,
+			revokedBy: locals.currentPerson.id,
+		});
 		if (!result.ok) {
 			const message =
 				result.error.kind === 'last_admin_lockout'
@@ -169,5 +188,5 @@ export const actions: Actions = {
 			return fail(400, { message });
 		}
 		return { success: true };
-	}
+	},
 };

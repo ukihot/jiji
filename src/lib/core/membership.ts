@@ -98,7 +98,7 @@ export interface MembershipContext {
 
 export function decideMembership(
 	command: MembershipCommand,
-	context: MembershipContext
+	context: MembershipContext,
 ): MembershipDecideResult {
 	switch (command.type) {
 		case 'GrantMembership': {
@@ -121,10 +121,10 @@ export function decideMembership(
 							processScope: command.processScope,
 							grantedBy: command.grantedBy,
 							grantedAt: context.now.toISOString(),
-							expiresAt: command.expiresAt ? command.expiresAt.toISOString() : null
-						}
-					}
-				]
+							expiresAt: command.expiresAt ? command.expiresAt.toISOString() : null,
+						},
+					},
+				],
 			};
 		}
 
@@ -142,10 +142,10 @@ export function decideMembership(
 						payload: {
 							membershipId: command.membershipId,
 							permissionLevel: command.permissionLevel,
-							processScope: command.processScope
-						}
-					}
-				]
+							processScope: command.processScope,
+						},
+					},
+				],
 			};
 		}
 
@@ -161,10 +161,10 @@ export function decideMembership(
 						payload: {
 							membershipId: command.membershipId,
 							revokedBy: command.revokedBy,
-							revokedAt: context.now.toISOString()
-						}
-					}
-				]
+							revokedAt: context.now.toISOString(),
+						},
+					},
+				],
 			};
 		}
 	}

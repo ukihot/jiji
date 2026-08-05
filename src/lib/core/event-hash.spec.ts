@@ -24,12 +24,12 @@ describe('computeEventHash', () => {
 		const original = computeEventHash(null, {
 			type: 'CutAdded',
 			payload: { number: 'C-001' },
-			createdAt
+			createdAt,
 		});
 		const tampered = computeEventHash(null, {
 			type: 'CutAdded',
 			payload: { number: 'C-002' },
-			createdAt
+			createdAt,
 		});
 		expect(original).not.toBe(tampered);
 	});
@@ -39,7 +39,7 @@ describe('computeEventHash', () => {
 		const chained = computeEventHash('some-prev-hash', {
 			type: 'CutAdded',
 			payload: { n: 1 },
-			createdAt
+			createdAt,
 		});
 		expect(genesis).not.toBe(chained);
 	});

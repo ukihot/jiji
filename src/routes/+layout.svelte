@@ -14,20 +14,23 @@
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
 <div class="mx-auto flex min-h-screen max-w-4xl flex-col px-4 sm:px-6">
-	<header class="flex items-center justify-between border-b border-border py-4">
-		<a href="/" class="flex items-center gap-2 font-semibold text-foreground no-underline">
+	<header class="border-border flex items-center justify-between border-b py-4">
+		<a href="/" class="text-foreground flex items-center gap-2 font-semibold no-underline">
 			<Film size={20} class="text-primary" aria-hidden="true" />
 			Jiji
 		</a>
 
 		<div class="flex items-center gap-4">
 			{#if data.currentPerson}
-				<span class="flex items-center gap-1.5 text-sm text-muted">
+				<span class="text-muted flex items-center gap-1.5 text-sm">
 					<User size={16} aria-hidden="true" />
 					{data.currentPerson.name}
 				</span>
 			{:else}
-				<a href="/dev-login" class="flex items-center gap-1.5 text-sm text-primary no-underline hover:underline">
+				<a
+					href="/dev-login"
+					class="text-primary flex items-center gap-1.5 text-sm no-underline hover:underline"
+				>
 					<LogIn size={16} aria-hidden="true" />
 					ログイン
 				</a>

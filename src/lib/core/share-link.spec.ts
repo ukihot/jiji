@@ -5,11 +5,16 @@ import {
 	evolveShareLink,
 	isShareLinkActive,
 	type ShareLinkContext,
-	type ShareLinkEvent
+	type ShareLinkEvent,
 } from './share-link';
 
 const now = new Date('2026-08-05T00:00:00.000Z');
-const activeContext: ShareLinkContext = { now, isActive: true, alreadyClaimedPersonId: null, alreadyRevoked: false };
+const activeContext: ShareLinkContext = {
+	now,
+	isActive: true,
+	alreadyClaimedPersonId: null,
+	alreadyRevoked: false,
+};
 
 describe('decideShareLink: CreateShareLink', () => {
 	it('rejects a link with no target cuts', () => {
@@ -20,9 +25,9 @@ describe('decideShareLink: CreateShareLink', () => {
 				targetCutIds: [],
 				permissionLevel: 'contributor',
 				createdBy: 'admin1',
-				expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+				expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
 			},
-			activeContext
+			activeContext,
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -35,9 +40,9 @@ describe('decideShareLink: CreateShareLink', () => {
 				targetCutIds: ['c1'],
 				permissionLevel: 'viewer',
 				createdBy: 'admin1',
-				expiresAt: new Date(now.getTime() - 1000)
+				expiresAt: new Date(now.getTime() - 1000),
 			},
-			activeContext
+			activeContext,
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -50,9 +55,9 @@ describe('decideShareLink: CreateShareLink', () => {
 				targetCutIds: ['c1'],
 				permissionLevel: 'viewer',
 				createdBy: 'admin1',
-				expiresAt: new Date(now.getTime() + SHARE_LINK_MAX_DURATION_MS + 1000)
+				expiresAt: new Date(now.getTime() + SHARE_LINK_MAX_DURATION_MS + 1000),
 			},
-			activeContext
+			activeContext,
 		);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe('expiry_too_far');
@@ -66,9 +71,9 @@ describe('decideShareLink: CreateShareLink', () => {
 				targetCutIds: ['c1', 'c2'],
 				permissionLevel: 'contributor',
 				createdBy: 'admin1',
-				expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+				expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
 			},
-			activeContext
+			activeContext,
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -78,7 +83,7 @@ describe('decideShareLink: ClaimShareLink (Magic Identity)', () => {
 	it('rejects claiming an inactive (expired/revoked) link', () => {
 		const result = decideShareLink(
 			{ type: 'ClaimShareLink', shareLinkId: 's1', personId: 'p1', name: '佐藤' },
-			{ ...activeContext, isActive: false }
+			{ ...activeContext, isActive: false },
 		);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe('link_inactive');
@@ -87,7 +92,7 @@ describe('decideShareLink: ClaimShareLink (Magic Identity)', () => {
 	it('rejects re-claiming an already-claimed link (同一トークン＝同一人物)', () => {
 		const result = decideShareLink(
 			{ type: 'ClaimShareLink', shareLinkId: 's1', personId: 'p2', name: '鈴木' },
-			{ ...activeContext, alreadyClaimedPersonId: 'p1' }
+			{ ...activeContext, alreadyClaimedPersonId: 'p1' },
 		);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe('already_claimed');
@@ -96,7 +101,7 @@ describe('decideShareLink: ClaimShareLink (Magic Identity)', () => {
 	it('rejects a blank name', () => {
 		const result = decideShareLink(
 			{ type: 'ClaimShareLink', shareLinkId: 's1', personId: 'p1', name: '  ' },
-			activeContext
+			activeContext,
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -104,7 +109,7 @@ describe('decideShareLink: ClaimShareLink (Magic Identity)', () => {
 	it('accepts a valid claim', () => {
 		const result = decideShareLink(
 			{ type: 'ClaimShareLink', shareLinkId: 's1', personId: 'p1', name: '佐藤' },
-			activeContext
+			activeContext,
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -114,7 +119,7 @@ describe('decideShareLink: RevokeShareLink', () => {
 	it('rejects revoking an already-revoked link', () => {
 		const result = decideShareLink(
 			{ type: 'RevokeShareLink', shareLinkId: 's1', revokedBy: 'admin1' },
-			{ ...activeContext, alreadyRevoked: true }
+			{ ...activeContext, alreadyRevoked: true },
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -122,7 +127,7 @@ describe('decideShareLink: RevokeShareLink', () => {
 	it('accepts revoking an active link', () => {
 		const result = decideShareLink(
 			{ type: 'RevokeShareLink', shareLinkId: 's1', revokedBy: 'admin1' },
-			activeContext
+			activeContext,
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -139,14 +144,17 @@ describe('evolveShareLink', () => {
 					permissionLevel: 'contributor',
 					createdBy: 'admin1',
 					createdAt: now.toISOString(),
-					expiresAt: new Date(now.getTime() + 1000).toISOString()
-				}
+					expiresAt: new Date(now.getTime() + 1000).toISOString(),
+				},
 			},
 			{
 				type: 'ShareLinkClaimed',
-				payload: { shareLinkId: 's1', personId: 'p1', name: '佐藤', claimedAt: now.toISOString() }
+				payload: { shareLinkId: 's1', personId: 'p1', name: '佐藤', claimedAt: now.toISOString() },
 			},
-			{ type: 'ShareLinkRevoked', payload: { shareLinkId: 's1', revokedBy: 'admin1', revokedAt: now.toISOString() } }
+			{
+				type: 'ShareLinkRevoked',
+				payload: { shareLinkId: 's1', revokedBy: 'admin1', revokedAt: now.toISOString() },
+			},
 		];
 		expect(evolveShareLink(events)).toEqual({ claimedPersonId: 'p1', revoked: true });
 	});
@@ -154,14 +162,20 @@ describe('evolveShareLink', () => {
 
 describe('isShareLinkActive', () => {
 	it('is active before expiry and not revoked', () => {
-		expect(isShareLinkActive({ expiresAt: new Date(now.getTime() + 1000), revokedAt: null }, now)).toBe(true);
+		expect(
+			isShareLinkActive({ expiresAt: new Date(now.getTime() + 1000), revokedAt: null }, now),
+		).toBe(true);
 	});
 
 	it('is inactive after expiry', () => {
-		expect(isShareLinkActive({ expiresAt: new Date(now.getTime() - 1000), revokedAt: null }, now)).toBe(false);
+		expect(
+			isShareLinkActive({ expiresAt: new Date(now.getTime() - 1000), revokedAt: null }, now),
+		).toBe(false);
 	});
 
 	it('is inactive once revoked, even before expiry', () => {
-		expect(isShareLinkActive({ expiresAt: new Date(now.getTime() + 1000), revokedAt: now }, now)).toBe(false);
+		expect(
+			isShareLinkActive({ expiresAt: new Date(now.getTime() + 1000), revokedAt: now }, now),
+		).toBe(false);
 	});
 });

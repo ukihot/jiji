@@ -33,8 +33,9 @@ export const actions: Actions = {
 		}
 
 		const result = await createTimeline(locals.db, { titleId: params.titleId, season, episode });
-		if (!result.ok) return fail(400, { message: '話数を作成できませんでした（既に存在するかもしれません）' });
+		if (!result.ok)
+			return fail(400, { message: '話数を作成できませんでした（既に存在するかもしれません）' });
 
 		redirect(303, `/${params.titleId}/${result.timelineId}`);
-	}
+	},
 };

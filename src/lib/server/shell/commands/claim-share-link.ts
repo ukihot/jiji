@@ -1,4 +1,10 @@
-import { decideShareLink, evolveShareLink, isShareLinkActive, type ShareLinkError, type ShareLinkEvent } from '$lib/core/share-link';
+import {
+	decideShareLink,
+	evolveShareLink,
+	isShareLinkActive,
+	type ShareLinkError,
+	type ShareLinkEvent,
+} from '$lib/core/share-link';
 import { hashShareToken } from '../../auth/share-token';
 import type { SqliteDb } from '../../db';
 import { appendEvent, getEventsByTarget } from '../repository/event-repository';
@@ -15,7 +21,10 @@ export type ClaimShareLinkResult =
 	| { ok: false; error: ShareLinkError | { kind: 'not_found' } };
 
 /** design.md 8.5.2節 Magic Identity: 名前入力だけでexternal personを作り、share_linkに紐付ける */
-export async function claimShareLink(db: SqliteDb, input: ClaimShareLinkInput): Promise<ClaimShareLinkResult> {
+export async function claimShareLink(
+	db: SqliteDb,
+	input: ClaimShareLinkInput,
+): Promise<ClaimShareLinkResult> {
 	const now = new Date();
 	const tokenHash = hashShareToken(input.token);
 
@@ -25,7 +34,12 @@ export async function claimShareLink(db: SqliteDb, input: ClaimShareLinkInput): 
 
 		// 既にclaim済みなら新しいイベントは起こさず、その人物をそのまま返す（同一トークン＝同一人物）
 		if (link.claimedPersonId !== null) {
-			return { ok: true, personId: link.claimedPersonId, alreadyClaimed: true, expiresAt: link.expiresAt };
+			return {
+				ok: true,
+				personId: link.claimedPersonId,
+				alreadyClaimed: true,
+				expiresAt: link.expiresAt,
+			};
 		}
 
 		const rawEvents = await getEventsByTarget(tx, 'share_link', link.id);
@@ -39,13 +53,18 @@ export async function claimShareLink(db: SqliteDb, input: ClaimShareLinkInput): 
 				now,
 				isActive: isShareLinkActive(link, now),
 				alreadyClaimedPersonId: aggregate.claimedPersonId,
-				alreadyRevoked: aggregate.revoked
-			}
+				alreadyRevoked: aggregate.revoked,
+			},
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 
 		await appendEvent(tx, 'share_link', link.id, decision.events[0], now);
-		await insertPerson(tx, { id: personId, name: input.name, email: null, accountType: 'external' });
+		await insertPerson(tx, {
+			id: personId,
+			name: input.name,
+			email: null,
+			accountType: 'external',
+		});
 		await setClaimedPerson(tx, link.id, personId);
 
 		return { ok: true, personId, alreadyClaimed: false, expiresAt: link.expiresAt };

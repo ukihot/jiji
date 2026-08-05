@@ -14,17 +14,31 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	const now = new Date();
 	const canAddCut = locals.currentPerson
-		? await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'contributor', now, params.timelineId)
+		? await hasAtLeast(
+				locals.db,
+				locals.currentPerson.id,
+				params.titleId,
+				'contributor',
+				now,
+				params.timelineId,
+			)
 		: false;
 	const canShare = locals.currentPerson
-		? await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin', now, params.timelineId)
+		? await hasAtLeast(
+				locals.db,
+				locals.currentPerson.id,
+				params.titleId,
+				'admin',
+				now,
+				params.timelineId,
+			)
 		: false;
 
 	const shareLinks = canShare
 		? await listShareLinksForCuts(
 				locals.db,
 				view.cuts.map((cut) => cut.cutId),
-				now
+				now,
 			)
 		: [];
 
@@ -34,7 +48,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 export const actions: Actions = {
 	addCut: async ({ request, params, locals }) => {
 		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (!(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'contributor', new Date(), params.timelineId))) {
+		if (
+			!(await hasAtLeast(
+				locals.db,
+				locals.currentPerson.id,
+				params.titleId,
+				'contributor',
+				new Date(),
+				params.timelineId,
+			))
+		) {
 			return fail(403, { message: 'この話数にカットを追加する権限がありません' });
 		}
 
@@ -66,10 +89,12 @@ export const actions: Actions = {
 			number,
 			sortOrder,
 			plannedFrames,
-			sceneTags
+			sceneTags,
 		});
 		if (!result.ok) {
-			return fail(400, { message: 'カットを追加できませんでした（番号か並び順が重複している可能性があります）' });
+			return fail(400, {
+				message: 'カットを追加できませんでした（番号か並び順が重複している可能性があります）',
+			});
 		}
 
 		return { success: true };
@@ -77,12 +102,23 @@ export const actions: Actions = {
 
 	createShareLink: async ({ request, params, locals }) => {
 		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (!(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin', new Date(), params.timelineId))) {
+		if (
+			!(await hasAtLeast(
+				locals.db,
+				locals.currentPerson.id,
+				params.titleId,
+				'admin',
+				new Date(),
+				params.timelineId,
+			))
+		) {
 			return fail(403, { message: '共有リンクの発行にはこの作品の管理者権限が必要です' });
 		}
 
 		const formData = await request.formData();
-		const cutIds = formData.getAll('cutIds').filter((value): value is string => typeof value === 'string');
+		const cutIds = formData
+			.getAll('cutIds')
+			.filter((value): value is string => typeof value === 'string');
 		const permissionLevelRaw = formData.get('permissionLevel');
 		const expiresInDays = Number(formData.get('expiresInDays'));
 
@@ -100,7 +136,7 @@ export const actions: Actions = {
 			targetCutIds: cutIds,
 			permissionLevel,
 			createdBy: locals.currentPerson.id,
-			expiresAt
+			expiresAt,
 		});
 		if (!result.ok) return fail(400, { message: '共有リンクを作成できませんでした' });
 
@@ -110,7 +146,16 @@ export const actions: Actions = {
 
 	revokeShareLink: async ({ request, params, locals }) => {
 		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (!(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin', new Date(), params.timelineId))) {
+		if (
+			!(await hasAtLeast(
+				locals.db,
+				locals.currentPerson.id,
+				params.titleId,
+				'admin',
+				new Date(),
+				params.timelineId,
+			))
+		) {
 			return fail(403, { message: '権限がありません' });
 		}
 
@@ -118,9 +163,12 @@ export const actions: Actions = {
 		const shareLinkId = formData.get('shareLinkId');
 		if (typeof shareLinkId !== 'string') return fail(400, { message: '不正なリクエストです' });
 
-		const result = await revokeShareLink(locals.db, { shareLinkId, revokedBy: locals.currentPerson.id });
+		const result = await revokeShareLink(locals.db, {
+			shareLinkId,
+			revokedBy: locals.currentPerson.id,
+		});
 		if (!result.ok) return fail(400, { message: '取り消せませんでした' });
 
 		return { success: true };
-	}
+	},
 };

@@ -24,7 +24,11 @@ export interface AppendedEvent {
 	createdAt: Date;
 }
 
-async function getLatestHash(db: SqliteQueryable, targetType: string, targetId: string): Promise<string | null> {
+async function getLatestHash(
+	db: SqliteQueryable,
+	targetType: string,
+	targetId: string,
+): Promise<string | null> {
 	const rows = await db
 		.select({ hash: eventTable.hash })
 		.from(eventTable)
@@ -43,13 +47,13 @@ export async function appendEvent(
 	targetType: string,
 	targetId: string,
 	domainEvent: DomainEventToAppend,
-	now: Date
+	now: Date,
 ): Promise<AppendedEvent> {
 	const prevHash = await getLatestHash(db, targetType, targetId);
 	const hash = computeEventHash(prevHash, {
 		type: domainEvent.type,
 		payload: domainEvent.payload,
-		createdAt: now
+		createdAt: now,
 	});
 	const id = crypto.randomUUID();
 	await db.insert(eventTable).values({
@@ -60,9 +64,18 @@ export async function appendEvent(
 		payload: domainEvent.payload,
 		prevHash,
 		hash,
-		createdAt: now
+		createdAt: now,
 	});
-	return { id, targetType, targetId, type: domainEvent.type, payload: domainEvent.payload, prevHash, hash, createdAt: now };
+	return {
+		id,
+		targetType,
+		targetId,
+		type: domainEvent.type,
+		payload: domainEvent.payload,
+		prevHash,
+		hash,
+		createdAt: now,
+	};
 }
 
 /** 複数イベントを同じ(targetType, targetId)ストリームに順番に追記する */
@@ -71,7 +84,7 @@ export async function appendEvents(
 	targetType: string,
 	targetId: string,
 	domainEvents: readonly DomainEventToAppend[],
-	now: Date
+	now: Date,
 ): Promise<AppendedEvent[]> {
 	const appended: AppendedEvent[] = [];
 	for (const domainEvent of domainEvents) {
@@ -84,7 +97,7 @@ export async function appendEvents(
 export async function getEventsByTarget(
 	db: SqliteQueryable,
 	targetType: string,
-	targetId: string
+	targetId: string,
 ): Promise<AppendedEvent[]> {
 	const rows = await db
 		.select()
@@ -99,6 +112,6 @@ export async function getEventsByTarget(
 		payload: row.payload,
 		prevHash: row.prevHash,
 		hash: row.hash,
-		createdAt: row.createdAt
+		createdAt: row.createdAt,
 	}));
 }

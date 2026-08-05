@@ -6,7 +6,7 @@ describe('decideTimeline: CreateTitle', () => {
 		const result = decideTimeline(
 			{ type: 'CreateTitle', titleId: 't1', name: '   ' },
 			{ cutNumbers: new Set(), cutSortOrders: new Set() },
-			{ titleExists: false }
+			{ titleExists: false },
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -15,7 +15,7 @@ describe('decideTimeline: CreateTitle', () => {
 		const result = decideTimeline(
 			{ type: 'CreateTitle', titleId: 't1', name: '〇〇' },
 			{ cutNumbers: new Set(), cutSortOrders: new Set() },
-			{ titleExists: false }
+			{ titleExists: false },
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -26,7 +26,7 @@ describe('decideTimeline: CreateTimeline', () => {
 		const result = decideTimeline(
 			{ type: 'CreateTimeline', timelineId: 'tl1', titleId: 't1', season: '1期', episode: 3 },
 			{ cutNumbers: new Set(), cutSortOrders: new Set() },
-			{ titleExists: false }
+			{ titleExists: false },
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -35,7 +35,7 @@ describe('decideTimeline: CreateTimeline', () => {
 		const result = decideTimeline(
 			{ type: 'CreateTimeline', timelineId: 'tl1', titleId: 't1', season: '1期', episode: 0 },
 			{ cutNumbers: new Set(), cutSortOrders: new Set() },
-			{ titleExists: true }
+			{ titleExists: true },
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -44,7 +44,7 @@ describe('decideTimeline: CreateTimeline', () => {
 		const result = decideTimeline(
 			{ type: 'CreateTimeline', timelineId: 'tl1', titleId: 't1', season: '1期', episode: 3 },
 			{ cutNumbers: new Set(), cutSortOrders: new Set() },
-			{ titleExists: true }
+			{ titleExists: true },
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -62,10 +62,10 @@ describe('decideTimeline: AddCut', () => {
 				number: 'C-001',
 				sortOrder: 1,
 				plannedFrames: 24,
-				sceneTags: []
+				sceneTags: [],
 			},
 			state,
-			{ titleExists: true }
+			{ titleExists: true },
 		);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe('duplicate_cut_number');
@@ -80,10 +80,10 @@ describe('decideTimeline: AddCut', () => {
 				number: 'C-002',
 				sortOrder: 0,
 				plannedFrames: 24,
-				sceneTags: []
+				sceneTags: [],
 			},
 			state,
-			{ titleExists: true }
+			{ titleExists: true },
 		);
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.kind).toBe('duplicate_sort_order');
@@ -98,10 +98,10 @@ describe('decideTimeline: AddCut', () => {
 				number: 'C-002',
 				sortOrder: 1,
 				plannedFrames: 0,
-				sceneTags: []
+				sceneTags: [],
 			},
 			state,
-			{ titleExists: true }
+			{ titleExists: true },
 		);
 		expect(result.ok).toBe(false);
 	});
@@ -115,10 +115,10 @@ describe('decideTimeline: AddCut', () => {
 				number: 'C-002',
 				sortOrder: 1,
 				plannedFrames: 24,
-				sceneTags: ['夜']
+				sceneTags: ['夜'],
 			},
 			state,
-			{ titleExists: true }
+			{ titleExists: true },
 		);
 		expect(result.ok).toBe(true);
 	});
@@ -135,8 +135,8 @@ describe('evolveTimeline', () => {
 					number: 'C-001',
 					sortOrder: 0,
 					plannedFrames: 24,
-					sceneTags: []
-				}
+					sceneTags: [],
+				},
 			},
 			{
 				type: 'CutAdded',
@@ -146,9 +146,9 @@ describe('evolveTimeline', () => {
 					number: 'C-002',
 					sortOrder: 1,
 					plannedFrames: 12,
-					sceneTags: []
-				}
-			}
+					sceneTags: [],
+				},
+			},
 		];
 		const state = evolveTimeline(events);
 		expect(state.cutNumbers.has('C-001')).toBe(true);

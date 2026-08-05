@@ -19,7 +19,10 @@ export interface MembershipRow {
 	revokedBy: string | null;
 }
 
-export async function getMembership(db: SqliteQueryable, membershipId: string): Promise<MembershipRow | null> {
+export async function getMembership(
+	db: SqliteQueryable,
+	membershipId: string,
+): Promise<MembershipRow | null> {
 	const rows = await db.select().from(membership).where(eq(membership.id, membershipId));
 	return rows[0] ?? null;
 }
@@ -32,16 +35,19 @@ export async function updateMembershipPermission(
 	db: SqliteQueryable,
 	membershipId: string,
 	permissionLevel: PermissionLevel,
-	processScope: string[] | null
+	processScope: string[] | null,
 ): Promise<void> {
-	await db.update(membership).set({ permissionLevel, processScope }).where(eq(membership.id, membershipId));
+	await db
+		.update(membership)
+		.set({ permissionLevel, processScope })
+		.where(eq(membership.id, membershipId));
 }
 
 export async function revokeMembershipRow(
 	db: SqliteQueryable,
 	membershipId: string,
 	revokedAt: Date,
-	revokedBy: string
+	revokedBy: string,
 ): Promise<void> {
 	await db.update(membership).set({ revokedAt, revokedBy }).where(eq(membership.id, membershipId));
 }
@@ -57,7 +63,7 @@ export function toStateRow(row: MembershipRow): MembershipStateRow {
 		processScope: row.processScope,
 		grantedAt: row.grantedAt,
 		expiresAt: row.expiresAt,
-		revokedAt: row.revokedAt
+		revokedAt: row.revokedAt,
 	};
 }
 
@@ -75,13 +81,19 @@ export interface MembershipStateRow {
 	revokedAt: Date | null;
 }
 
-export async function upsertMembershipState(db: SqliteQueryable, row: MembershipStateRow): Promise<void> {
+export async function upsertMembershipState(
+	db: SqliteQueryable,
+	row: MembershipStateRow,
+): Promise<void> {
 	const existing = await db
 		.select({ membershipId: membershipState.membershipId })
 		.from(membershipState)
 		.where(eq(membershipState.membershipId, row.membershipId));
 	if (existing.length > 0) {
-		await db.update(membershipState).set(row).where(eq(membershipState.membershipId, row.membershipId));
+		await db
+			.update(membershipState)
+			.set(row)
+			.where(eq(membershipState.membershipId, row.membershipId));
 	} else {
 		await db.insert(membershipState).values(row);
 	}
@@ -96,7 +108,7 @@ export interface MemberListRow extends MembershipStateRow {
 export async function listMembershipStateByScope(
 	db: SqliteQueryable,
 	scopeType: 'title' | 'timeline',
-	scopeId: string
+	scopeId: string,
 ): Promise<MemberListRow[]> {
 	return db
 		.select({
@@ -110,7 +122,7 @@ export async function listMembershipStateByScope(
 			expiresAt: membershipState.expiresAt,
 			revokedAt: membershipState.revokedAt,
 			personName: person.name,
-			personEmail: person.email
+			personEmail: person.email,
 		})
 		.from(membershipState)
 		.innerJoin(person, eq(person.id, membershipState.personId))
@@ -126,7 +138,7 @@ export async function countActiveAdmins(
 	scopeType: 'title' | 'timeline',
 	scopeId: string,
 	now: Date,
-	excludingMembershipId: string
+	excludingMembershipId: string,
 ): Promise<number> {
 	const rows = await db
 		.select({ membershipId: membershipState.membershipId, expiresAt: membershipState.expiresAt })
@@ -137,8 +149,8 @@ export async function countActiveAdmins(
 				eq(membershipState.scopeId, scopeId),
 				eq(membershipState.permissionLevel, 'admin'),
 				isNull(membershipState.revokedAt),
-				ne(membershipState.membershipId, excludingMembershipId)
-			)
+				ne(membershipState.membershipId, excludingMembershipId),
+			),
 		);
 	return rows.filter((row) => row.expiresAt === null || row.expiresAt > now).length;
 }

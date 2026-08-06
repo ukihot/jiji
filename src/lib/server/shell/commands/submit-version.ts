@@ -1,4 +1,5 @@
 import {
+	applyRepresentationTypesDefault,
 	decideRepresentation,
 	evolveRepresentation,
 	type DerivedFromRef,
@@ -15,12 +16,15 @@ import {
 	insertRepresentation,
 	insertSubmission,
 	insertVersion,
+	listEnabledRepresentationTypes,
 	listRepresentationCurrentVersionsByCut,
 	upsertRepresentationCurrentVersion,
 } from '../repository/production-repository';
 import { updateBandViewProcessStatus } from '../repository/timeline-repository';
 
 export interface SubmitVersionInput {
+	/** design.md 4.0.2節改訂: そのTitleで有効なRepresentation種別を確認するために要る */
+	titleId: string;
 	cutId: string;
 	representationType: RepresentationType;
 	processStep: string;
@@ -55,6 +59,10 @@ export async function submitVersion(
 		const events = rawEvents.map((row) => row as unknown as RepresentationEvent);
 		const state = evolveRepresentation(events);
 
+		// design.md 4.0.2節改訂: プロジェクト設定で有効化されたRepresentation種別のみ提出を許す
+		const configuredTypes = await listEnabledRepresentationTypes(tx, input.titleId);
+		const enabledTypes = applyRepresentationTypesDefault(configuredTypes);
+
 		const decision = decideRepresentation(
 			{
 				type: 'SubmitVersion',
@@ -71,7 +79,7 @@ export async function submitVersion(
 				submittedBy: input.submittedBy,
 			},
 			state,
-			{ now },
+			{ now, enabledTypes },
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 

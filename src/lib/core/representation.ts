@@ -48,6 +48,22 @@ export function isRepresentationType(value: unknown): value is RepresentationTyp
 	return typeof value === 'string' && (REPRESENTATION_TYPES as readonly string[]).includes(value);
 }
 
+/**
+ * どのRepresentation種別をこのTitleで使うかは、Title（プロジェクト）ごとにスタジオが選べる
+ * （チェックボックスで有効/無効を切り替える。design.md 4.0.2節改訂）。カタログそのもの
+ * （REPRESENTATION_TYPES）は固定enumのまま——スタジオが任意の名前を自由に増やせるワークフロー
+ * エンジンにはしない（7章の工程DAGと同じ「必要最小限の拡張のみ許可する」線引き）が、
+ * どの標準工程をそのプロジェクトで使うかという「サブセットの選択」は認める。
+ *
+ * まだ一度も設定されていないTitle（設定イベントが無い）は、全種類が有効な状態を既定とする
+ * （P-06: 事前のセットアップ操作を要求しない。新規プロジェクトは今までどおり何もせず使える）。
+ */
+export function applyRepresentationTypesDefault(
+	configured: readonly RepresentationType[],
+): ReadonlySet<RepresentationType> {
+	return configured.length > 0 ? new Set(configured) : new Set(REPRESENTATION_TYPES);
+}
+
 export type ReviewResult = 'approved' | 'returned';
 
 export const REVIEW_RESULTS: readonly ReviewResult[] = ['approved', 'returned'];
@@ -169,7 +185,9 @@ export type RepresentationError =
 	/** SubmitReview/SealVersionの対象versionIdが、このCutのこれまでのVersionSubmittedイベントに存在しない */
 	| { kind: 'version_not_found' }
 	/** SubmitVersionのderivedFrom.versionIdが、このCutのこれまでのVersionSubmittedイベントに存在しない */
-	| { kind: 'derived_from_version_not_found' };
+	| { kind: 'derived_from_version_not_found' }
+	/** そのRepresentationTypeは、このTitleでは無効化されている（プロジェクト設定で外された） */
+	| { kind: 'representation_type_disabled' };
 
 export type RepresentationDecideResult =
 	| { ok: true; events: RepresentationEvent[] }
@@ -220,6 +238,12 @@ export function evolveRepresentation(events: readonly RepresentationEvent[]): Cu
 
 export interface RepresentationContext {
 	now: Date;
+	/**
+	 * このTitleで現在有効なRepresentation種別（applyRepresentationTypesDefaultを通した後の集合）。
+	 * SubmitVersionだけが参照する。SubmitReview/SealVersionのdecideには無関係なので、
+	 * それらの呼び出し元はダミー値（例: 全種類）を渡してよい（decideMembershipのGrant時と同じ扱い）。
+	 */
+	enabledTypes: ReadonlySet<RepresentationType>;
 }
 
 export function decideRepresentation(
@@ -229,6 +253,9 @@ export function decideRepresentation(
 ): RepresentationDecideResult {
 	switch (command.type) {
 		case 'SubmitVersion': {
+			if (!context.enabledTypes.has(command.representationType)) {
+				return { ok: false, error: { kind: 'representation_type_disabled' } };
+			}
 			if (command.fileRef.trim().length === 0) {
 				return { ok: false, error: { kind: 'blank_file_ref' } };
 			}
@@ -320,4 +347,73 @@ export function decideRepresentation(
 			};
 		}
 	}
+}
+
+/**
+ * ここから別のアグリゲート: Title単位の「このプロジェクトはどのRepresentation種別を使うか」設定。
+ * Cutの生産物ライフサイクル（'cut'+cutIdストリーム）とは無関係な、Title単位の設定なので、
+ * 意図的に別のtargetType（'title-representation-config'+titleId）の専用ストリームに乗せる
+ * （'title'+titleIdストリームはTitleCreatedしか無いが、混ぜずに独立させたほうが素直）。
+ */
+
+export type RepresentationTypesConfigEvent = {
+	type: 'RepresentationTypesConfigured';
+	payload: {
+		titleId: string;
+		enabledTypes: RepresentationType[];
+		configuredBy: string;
+		configuredAt: string; // ISO
+	};
+};
+
+export type ConfigureRepresentationTypesCommand = {
+	type: 'ConfigureRepresentationTypes';
+	titleId: string;
+	enabledTypes: RepresentationType[];
+	configuredBy: string;
+};
+
+export type RepresentationTypesConfigError = { kind: 'no_types_selected' };
+
+export type RepresentationTypesConfigDecideResult =
+	| { ok: true; events: RepresentationTypesConfigEvent[] }
+	| { ok: false; error: RepresentationTypesConfigError };
+
+export function decideRepresentationTypesConfig(
+	command: ConfigureRepresentationTypesCommand,
+	context: { now: Date },
+): RepresentationTypesConfigDecideResult {
+	if (command.enabledTypes.length === 0) {
+		return { ok: false, error: { kind: 'no_types_selected' } };
+	}
+	return {
+		ok: true,
+		events: [
+			{
+				type: 'RepresentationTypesConfigured',
+				payload: {
+					titleId: command.titleId,
+					enabledTypes: command.enabledTypes,
+					configuredBy: command.configuredBy,
+					configuredAt: context.now.toISOString(),
+				},
+			},
+		],
+	};
+}
+
+/**
+ * 「最後に設定されたイベント」が現在の有効集合（設定は都度フルセットで置き換える。差分ではない）。
+ * 設定イベントが1件も無ければ空集合を返す——「全種類が既定で有効」という意味づけは
+ * applyRepresentationTypesDefaultの責務にする（このevolve自体は素直にイベントを畳み込むだけ）。
+ */
+export function evolveRepresentationTypesConfig(
+	events: readonly { type: string; payload: unknown }[],
+): RepresentationType[] {
+	const configEvents = events.filter(
+		(event): event is RepresentationTypesConfigEvent =>
+			event.type === 'RepresentationTypesConfigured',
+	);
+	const last = configEvents[configEvents.length - 1];
+	return last ? last.payload.enabledTypes : [];
 }

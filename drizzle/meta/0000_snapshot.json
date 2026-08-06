@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d21d4f0d-9b76-4439-acc9-583f7549d317",
+  "id": "11b5879d-723a-4084-af79-0aeb672052be",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "cut": {
@@ -986,6 +986,52 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "title_representation_type": {
+      "name": "title_representation_type",
+      "columns": {
+        "title_id": {
+          "name": "title_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "title_representation_type_title_id_title_id_fk": {
+          "name": "title_representation_type_title_id_title_id_fk",
+          "tableFrom": "title_representation_type",
+          "tableTo": "title",
+          "columnsFrom": [
+            "title_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "title_representation_type_title_id_type_pk": {
+          "columns": [
+            "title_id",
+            "type"
+          ],
+          "name": "title_representation_type_title_id_type_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },

@@ -187,11 +187,12 @@ src/
 | `timeline` | id, title_id, season, episode | 話数単位で1レコード |
 | `timeline_item` | id, timeline_id, type(cut/audio/transition/marker), label(text), sort_order(int), width_frames(int, markerは0/NULL可) | Timeline上に並ぶ要素の共通台帳。**Cutを含むすべての要素種別がこの1テーブルに乗る**（4.0.1節）。number/尺の表示順はここで一元管理する |
 | `cut` | id(=timeline_item.id), scene_tags(json) | idは独自採番せず`timeline_item.id`をそのままPK/FKとして共有する（クラステーブル継承）。number・sort_order・尺は`timeline_item`側に統合済みのため、Cut固有の属性（シーン分類）のみを持つ |
-| `representation` | id, cut_id, type(storyboard/animatic/layout/animation/bg/cg_render/composite/final), sort_order(int) | Cutが工程を経て取る表現形態（要件定義4.4節・6.1節）。1 Cutにつき同じtypeは1件（UNIQUE制約）。typeは固定enumとし、7章の工程DAGと同様にユーザーが自由追加できる項目にはしない（4.0.2節） |
+| `representation` | id, cut_id, type(storyboard/animatic/layout/animation/bg/cg_render/composite/final), sort_order(int) | Cutが工程を経て取る表現形態（要件定義4.4節・6.1節）。1 Cutにつき同じtypeは1件（UNIQUE制約）。typeのカタログ自体は固定enumのまま（7章の工程DAGと同様、任意の名前をユーザーが自由追加できる項目にはしない）だが、このカタログのうちどれをそのTitleで使うかはプロジェクト単位で選べる（`title_representation_type`参照、4.0.2節改訂） |
+| `title_representation_type` | title_id, type | そのTitleで有効なRepresentation種別の投影（存在＝有効。複合PK）。行が1つも無いTitleは「未設定」＝全種類有効という既定になる（4.0.2節改訂）。正本は`title-representation-config`+title_idストリームの`RepresentationTypesConfigured`イベント |
 | `asset` | id, title_id, type, name | |
 | `cut_asset` | cut_id, asset_id, used_version_id | 多対多の中間テーブル。使用版を記録。cut_idは`cut.id`（=`timeline_item.id`）を指すため、この節の変更による波及なし |
 | `submission` | id, cut_id or asset_id, representation_id(nullable, FK→representation), process_step, submitted_by, submitted_at | representation_idはcut向け提出では必須、asset向け提出（7章のAsset DAG：モデリング/リグ/ルックデブ）ではNULL——AssetはRepresentationを持たない（4.0.2節） |
-| `version` | id, submission_id, seq(int, 自動採番), file_ref, proxy_ref, layer_metadata(json, nullable), created_at | **UPDATE禁止・INSERTのみ**。上書きはアプリ層でも禁止する。layer_metadataはEXR AOV/PSDレイヤー等の内部構造を記録するのみで、プロキシ生成やRepresentation分割の対象にはしない（4.0.2節、F-25） |
+| `version` | id, submission_id, seq(int, 自動採番), file_ref, proxy_ref, artifact_metadata(json, nullable), derived_from_version_id(nullable, 自己参照FK), derived_from_relation(refined/converted/replaced, nullable), created_at | **UPDATE禁止・INSERTのみ**。上書きはアプリ層でも禁止する。artifact_metadataはEXR AOV/PSDレイヤー/PNGアルファ有無等、成果物形式ごとの内部構造を記録するのみで、プロキシ生成やRepresentation分割の対象にはしない（4.0.2節、F-25）。derived_from_*は「このVersionはどのVersionから作られたか」という制作上の因果関係（別Representationの版からのこともある。例: Layout v5からAnimation v1を作画）を残す |
 | `review` | id, version_id, reviewer_id, result, comment, reviewed_at | |
 | `seal` | id, version_id, hash, sealed_by, sealed_at | 対象バージョンのハッシュを記録。封印後の再計算差分で改竄検知 |
 | `issue` | id, target_type, target_id, status(open/closed), closer_required_id, close_reason, opened_at, closed_at | 状態は2値のみ。open時にcloser必須、close時に理由必須（DB制約＋アプリ層バリデーションの二重化） |
@@ -212,6 +213,8 @@ Timeline ─< TimelineItem ─┬─ Cut ─┬─< CutAsset >─── Asset �
 Timeline ─────────────────────────────────────────────< Event（timeline全体イベントも許容）
 ```
 
+上図には表れないが、`Version`は自己参照で`derived_from_version_id`を持つ（別Representation配下のVersionを指すことが普通にある。4.0.2節参照）。また`Title ─< TitleRepresentationType`という、Cutのライフサイクルとは独立したTitle単位の設定投影も別途存在する（同節）。
+
 ## 4.0.1 なぜTimelineItemを導入するか
 
 現在の実装対象はCutだけだが、Jijiの本体は「Cutの集合」ではなく「更新され続ける1本のTimeline」である（要件定義1.2節）。将来的にOP・ED・CM・提供・アイキャッチ、あるいは劇場版・配信版といったCutではないTimeline構成要素が必ず出てくる。これらをあとから追加しようとすると、Cutを中心に組んだスキーマ・投影・UIコンポーネントを作り直すことになる。
@@ -224,11 +227,15 @@ Timeline ───────────────────────�
 
 要件定義v0.3で追加されたCut Lineage（要件定義1.2節・4.4節）を物理モデルに落とす。v0.2までの`submission`/`version`はCutに直接ぶら下がる1段構成だったが、これだと「Storyboardの版」と「Compositeの版」が同じ連番空間に混在し、「Representationごとの最新版/採用版」（要件定義6.2節）を表現できない。
 
-そこで`cut`と`submission`の間に`representation`を挟む2段構成にする（Cut → Representation → Submission → Version）。`representation.type`は固定enumとし、7章の工程DAGと同じく**ユーザーが自由に追加できるワークフロー要素にはしない**——要件定義14章のリスク「Representationの増加によるモデル複雑化」と、P-06「制作現場の入力を増やさない」への対応でもある。
+そこで`cut`と`submission`の間に`representation`を挟む2段構成にする（Cut → Representation → Submission → Version）。`representation.type`のカタログは固定enumとし、7章の工程DAGと同じく**ユーザーが任意の名前を自由に追加できるワークフロー要素にはしない**——要件定義14章のリスク「Representationの増加によるモデル複雑化」と、P-06「制作現場の入力を増やさない」への対応でもある。
+
+**ただし、このカタログのうちどれをそのプロジェクトで使うかはTitle単位で選べる**（`title_representation_type`、チェックボックスで有効/無効を切り替えるプロジェクト設定UI）。スタジオごとに工程の切り方・呼び方は異なり、Jijiが特定のスタジオの分業をUIに固定化してしまうのは避けたい。固定enumで「新しい種類を勝手に生やせない」という歯止めは保ったまま、「標準カタログのうちどれを使うか」というサブセット選択だけはスタジオに委ねる、という折衷である。設定が一度も行われていないTitleは全種類が有効という既定になる（P-06: 新規プロジェクトは今までどおりセットアップ無しで使える）。無効化しても、既に提出済みのRepresentation・Versionは履歴として引き続き見える（P-04）——無効化は「今後の新規提出を止める」だけの意味であり、過去を消す操作ではない。この設定変更自体も`RepresentationTypesConfigured`イベントとして記録する（Cut自体のライフサイクルとは別の、Title単位の`title-representation-config`ストリーム）。
 
 `asset`（3D/美術で使い回す共有素材）への提出はRepresentationを経由しない。AssetはCutと違い「絵コンテ→完パケ」という時間軸を持たず、7章のAsset DAG（モデリング→リグ→ルックデブ）で完結するため、`submission.representation_id`はcut向け提出でのみ必須とする。
 
-EXRのAOV（beauty/diffuse/specular/normal等）やPSDのレイヤーは、独立したRepresentation/Versionにはしない。1つのVersionが内部に持つメタデータ（`version.layer_metadata`）として扱う（要件定義6.1節、F-25）。具体的なJSON形状は10章「未決定事項」参照。
+EXRのAOV（beauty/diffuse/specular/normal等）やPSDのレイヤー、PNGのアルファ有無等は、独立したRepresentation/Versionにはしない。1つのVersionが内部に持つメタデータ（`version.artifact_metadata`）として扱う（要件定義6.1節、F-25）。具体的なJSON形状は10章「未決定事項」参照。
+
+さらに、Versionは「どのVersionから作られたか」という制作上の因果関係（`derived_from_version_id`/`derived_from_relation`）を持てる。Representationごとの版番号（seq）はあくまで提出順の連番でしかなく、それだけでは「Layout v5から作画してAnimation v1ができた」という**別Representationをまたいだ派生元**は表現できない。Cut Lineageの本質は個々のRepresentation列ではなくこの派生関係にあるため、Versionの物理設計として持たせている。関係の種類は`refined`（改稿）/`converted`（変換）/`replaced`（差し替え）の3種（representation.tsのDerivedFromRelation参照）。
 
 ## 4.1 投影テーブル（CQRS読み取りモデル）
 
@@ -590,10 +597,11 @@ Push通知（Dropbox webhook、Google Drive watch channel）は共通して「�
 * Magic Identityのトークン運用：端末紛失・トークン漏洩時の再発行／失効フロー。同一人物が複数トークンを持った場合に`person`を統合する手段の要否
 * TimelineItemの他種別（Audio/Transition/Marker）に7章の工程DAGをどこまで適用するか。OP/ED/CM・劇場版/配信版への拡張時に再検討する
 * 現在地カーソル（7.4節）の同期粒度とパフォーマンス：フレーム単位で追従させるか一定間隔に間引くか、スクラブ中の再描画コスト
-* `version.layer_metadata`（EXR AOV/PSDレイヤー情報、4.0.2節）の具体的なJSON形状：AOV名・レイヤー名一覧だけで足りるか、解像度・カラースペース・ビット深度等も持つか
+* `version.artifact_metadata`（EXR AOV/PSDレイヤー情報、4.0.2節）の具体的なJSON形状：AOV名・レイヤー名一覧だけで足りるか、解像度・カラースペース・ビット深度等も持つか
 * EXRのトーンマッピング方式（6.3節）：OCIO設定をJiji側で管理するか、素材提出側に正規化済みLUT適用済みの書き出しを求めるか
 * AEP/Nukeスクリプトのメタデータ抽出手段（F-40, F-41）：パーサライブラリの選定。AE/Nuke本体を必要としないオフライン解析が可能か
-* Representationの標準type一覧（4章：storyboard/animatic/layout/animation/bg/cg_render/composite/final）はスタジオ間でどこまで共通か。Phase 0的な実データ収集が要件定義同様に必要か
+* Representationの標準typeカタログ（storyboard/animatic/layout/animation/bg/cg_render/composite/final）は、どのプロジェクトで使うかはTitle単位のチェックボックスで選べるようにした（4.0.2節改訂）。残る論点は「この8種のカタログ自体が全スタジオをカバーしきれているか」——カタログに無い種類が必要なスタジオが出てきた場合、(a) カタログに新項目を足す（固定enumのまま増やす。全プロジェクト共通の選択肢が増えるだけ）か、(b) Titleごとの自由記述を許す（固定enumの前提を崩す）か。前者で足りる間はPhase 0的な実データ収集は急がなくてよい
+* Representationの派生関係（`derived_from_relation`: refined/converted/replaced、4.0.2節）は3種で十分か。Cut Lineageの可視化（Cut Evolution Viewer）を実際に使ってみてから見直す
 * クラウドストレージ連携（9章）のOAuthトークン保存方式：DBに暗号化して持つか、OS keychain相当／外部secret storeを参照する形にするか
 * クラウドストレージ連携（9章）のフォルダ⇔Cut/Representationマッピング規約：固定の階層命名（例：`/C-125/Layout/`）をスタジオに要求するか、Jiji側にマッピングUIを用意して任意のフォルダ構成を許すか
 * クラウドストレージ連携（9章）のポーリング間隔：既定5分は妥当か。Title/Timelineごとに変更可能にする必要があるか

@@ -6,13 +6,14 @@
 	import type { DerivedFromRelation, RepresentationType } from '$lib/core/representation';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
-	import BackLink from '$lib/components/BackLink.svelte';
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import ErrorNotice from '$lib/components/ErrorNotice.svelte';
 	import FormField from '$lib/components/FormField.svelte';
 	import FormInput from '$lib/components/FormInput.svelte';
 	import FormSelect from '$lib/components/FormSelect.svelte';
 	import Panel from '$lib/components/Panel.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -41,28 +42,111 @@
 	function versionOptionLabel(v: { representationType: RepresentationType; seq: number }): string {
 		return `${TYPE_LABEL[v.representationType]()} v${v.seq}`;
 	}
+
+	// design.md P-03「工程は状態ではなく履歴」だが、8段のパネルを毎回スクロールして
+	// 読まないと「今このカットがどこまで進んでいるか」が分からないのは日々の運用として重い。
+	// パイプライン全体を一望できる帯を用意し、各パネルへのアンカーとして使う
+	// （履歴そのものはこれまで通り下の詳細パネルが正）。
+	type ReprSummary = { isEnabled: boolean; versions: { isApproved: boolean }[] };
+	type ReprStatus = 'disabled' | 'empty' | 'pending' | 'approved';
+
+	function reprStatus(repr: ReprSummary): ReprStatus {
+		if (!repr.isEnabled) return 'disabled';
+		if (repr.versions.length === 0) return 'empty';
+		if (repr.versions.some((v) => v.isApproved)) return 'approved';
+		return 'pending';
+	}
+
+	const STATUS_CLASS: Record<ReprStatus, string> = {
+		disabled: 'border-border text-muted opacity-50',
+		empty: 'border-border text-muted',
+		pending: 'border-warning/40 bg-warning-surface text-warning',
+		approved: 'border-success/40 bg-success/10 text-success',
+	};
+
+	const STATUS_LABEL: Record<ReprStatus, () => string> = {
+		disabled: m.representation_type_disabled_badge,
+		empty: m.pipeline_status_empty,
+		pending: m.status_latest,
+		approved: m.status_approved,
+	};
 </script>
 
-<p>
-	<BackLink href="/{data.view.title.id}/{data.view.timeline.id}">
-		{m.episode_label({ season: data.view.timeline.season, episode: data.view.timeline.episode })}
-	</BackLink>
-</p>
-<h1 class="text-foreground mt-2 flex items-center gap-2 text-2xl font-bold">
-	{data.view.cut.number}
-	<span class="text-muted text-base font-normal">{data.view.title.name}</span>
-</h1>
+<Breadcrumb
+	items={[
+		{ label: m.nav_back_to_titles(), href: '/' },
+		{ label: data.view.title.name, href: `/${data.view.title.id}` },
+		{
+			label: m.episode_label({
+				season: data.view.timeline.season,
+				episode: data.view.timeline.episode,
+			}),
+			href: `/${data.view.title.id}/${data.view.timeline.id}`,
+		},
+		{ label: data.view.cut.number },
+	]}
+/>
+
+<PageHeader
+	title={data.view.cut.number}
+	subtitle="{data.view.title.name} ・ {m.episode_label({
+		season: data.view.timeline.season,
+		episode: data.view.timeline.episode,
+	})}"
+/>
 <p class="text-muted mt-1 text-sm">{m.cut_evolution_hint()}</p>
 
 {#if form?.message}
 	<ErrorNotice message={form.message} class="mt-4" />
 {/if}
 
-<div class="mt-6 space-y-4">
+<section
+	class="border-border bg-surface mt-6 rounded-xl border p-4"
+	aria-label={m.pipeline_status_heading()}
+>
+	<div class="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+		<h2 class="text-muted text-xs font-semibold tracking-wide uppercase">
+			{m.pipeline_status_heading()}
+		</h2>
+		<p class="text-muted text-xs">{m.pipeline_status_hint()}</p>
+	</div>
+	<ol class="flex items-stretch overflow-x-auto">
+		{#each data.view.representations as repr, i (repr.type)}
+			{@const status = reprStatus(repr)}
+			{#if i > 0}
+				<li class="flex w-4 shrink-0 items-center sm:w-8" aria-hidden="true">
+					<span class="bg-border h-px w-full"></span>
+				</li>
+			{/if}
+			<li class="shrink-0">
+				<a
+					href="#repr-{repr.type}"
+					class="flex min-w-22 flex-col items-center gap-1 rounded-lg border px-2.5 py-2 text-center no-underline transition hover:opacity-80 {STATUS_CLASS[
+						status
+					]}"
+				>
+					<span class="text-xs font-medium">{TYPE_LABEL[repr.type]()}</span>
+					<span class="text-[0.65rem] opacity-80">{STATUS_LABEL[status]()}</span>
+				</a>
+			</li>
+		{/each}
+	</ol>
+</section>
+
+<div class="mt-4 space-y-4">
 	{#each data.view.representations as repr (repr.type)}
-		<Panel>
+		<Panel class="scroll-mt-20" id="repr-{repr.type}">
 			<div class="flex items-center justify-between">
-				<h2 class="text-foreground font-semibold">{TYPE_LABEL[repr.type]()}</h2>
+				<h2 class="text-foreground flex items-center gap-1.5 font-semibold">
+					{TYPE_LABEL[repr.type]()}
+					{#if !repr.isEnabled}
+						<span
+							class="border-border text-muted rounded-full border px-1.5 py-0.5 text-xs font-normal"
+						>
+							{m.representation_type_disabled_badge()}
+						</span>
+					{/if}
+				</h2>
 				{#if repr.versions.length === 0}
 					<span class="text-muted text-xs">{m.representation_no_versions()}</span>
 				{/if}
@@ -154,7 +238,7 @@
 				</ul>
 			{/if}
 
-			{#if data.canSubmit}
+			{#if data.canSubmit && repr.isEnabled}
 				<form method="POST" action="?/submitVersion" class="mt-3 flex flex-wrap items-end gap-2">
 					<input type="hidden" name="representationType" value={repr.type} />
 					<FormField label={m.label_process_step()}>

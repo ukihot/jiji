@@ -113,6 +113,7 @@ export const actions: Actions = {
 		}
 
 		const result = await submitVersion(locals.db, {
+			titleId: params.titleId,
 			cutId: params.cutId,
 			representationType,
 			processStep,
@@ -126,7 +127,9 @@ export const actions: Actions = {
 			const message =
 				result.error.kind === 'derived_from_version_not_found'
 					? m.error_derived_from_not_found()
-					: m.error_submit_version_failed();
+					: result.error.kind === 'representation_type_disabled'
+						? m.error_representation_type_disabled()
+						: m.error_submit_version_failed();
 			return fail(400, { message });
 		}
 

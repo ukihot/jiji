@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+	REPRESENTATION_TYPES,
+	applyRepresentationTypesDefault,
 	decideRepresentation,
+	decideRepresentationTypesConfig,
 	evolveRepresentation,
+	evolveRepresentationTypesConfig,
 	type CutProductionState,
 	type RepresentationContext,
 	type RepresentationEvent,
+	type RepresentationTypesConfigEvent,
 } from './representation';
 
 const now = new Date('2026-08-06T00:00:00.000Z');
-const baseContext: RepresentationContext = { now };
+const baseContext: RepresentationContext = { now, enabledTypes: new Set(REPRESENTATION_TYPES) };
 const emptyState: CutProductionState = {
 	representationsByType: new Map(),
 	knownVersionIds: new Set(),
@@ -187,6 +192,30 @@ describe('decideRepresentation: SubmitVersion', () => {
 		expect(versionSubmitted).toMatchObject({
 			payload: { derivedFrom: { versionId: 'v1', relation: 'refined' } },
 		});
+	});
+
+	it('rejects a representationType that is disabled for this title', () => {
+		const result = decideRepresentation(
+			{
+				type: 'SubmitVersion',
+				cutId: 'c1',
+				representationType: 'cg_render',
+				representationIdIfNew: 'r1',
+				submissionId: 's1',
+				versionId: 'v1',
+				processStep: 'Render',
+				fileRef: '//nas/c1/cg_render/v1.exr',
+				proxyRef: null,
+				artifactMetadata: null,
+				derivedFrom: null,
+				submittedBy: 'p1',
+			},
+			emptyState,
+			// このTitleはlayoutしか有効化していない想定
+			{ now, enabledTypes: new Set(['layout']) },
+		);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.kind).toBe('representation_type_disabled');
 	});
 
 	it('rejects a derivedFrom pointing at an unknown version', () => {
@@ -435,5 +464,104 @@ describe('evolveRepresentation', () => {
 		const state = evolveRepresentation(events);
 		expect(state.representationsByType.get('layout')?.versionCount).toBe(1);
 		expect(state.knownVersionIds.size).toBe(1);
+	});
+});
+
+describe('decideRepresentationTypesConfig', () => {
+	it('rejects an empty selection', () => {
+		const result = decideRepresentationTypesConfig(
+			{
+				type: 'ConfigureRepresentationTypes',
+				titleId: 't1',
+				enabledTypes: [],
+				configuredBy: 'admin1',
+			},
+			{ now },
+		);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.kind).toBe('no_types_selected');
+	});
+
+	it('accepts a non-empty subset', () => {
+		const result = decideRepresentationTypesConfig(
+			{
+				type: 'ConfigureRepresentationTypes',
+				titleId: 't1',
+				enabledTypes: ['storyboard', 'layout', 'final'],
+				configuredBy: 'admin1',
+			},
+			{ now },
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.events).toEqual([
+			{
+				type: 'RepresentationTypesConfigured',
+				payload: {
+					titleId: 't1',
+					enabledTypes: ['storyboard', 'layout', 'final'],
+					configuredBy: 'admin1',
+					configuredAt: now.toISOString(),
+				},
+			},
+		]);
+	});
+});
+
+describe('evolveRepresentationTypesConfig', () => {
+	it('returns an empty list when never configured', () => {
+		expect(evolveRepresentationTypesConfig([])).toEqual([]);
+	});
+
+	it('takes the latest configuration when reconfigured more than once', () => {
+		const events: RepresentationTypesConfigEvent[] = [
+			{
+				type: 'RepresentationTypesConfigured',
+				payload: {
+					titleId: 't1',
+					enabledTypes: ['storyboard', 'layout'],
+					configuredBy: 'admin1',
+					configuredAt: now.toISOString(),
+				},
+			},
+			{
+				type: 'RepresentationTypesConfigured',
+				payload: {
+					titleId: 't1',
+					enabledTypes: ['storyboard', 'layout', 'cg_render'],
+					configuredBy: 'admin1',
+					configuredAt: now.toISOString(),
+				},
+			},
+		];
+		expect(evolveRepresentationTypesConfig(events)).toEqual(['storyboard', 'layout', 'cg_render']);
+	});
+
+	it('ignores unrelated event types on the same stream', () => {
+		const events = [
+			{ type: 'TitleCreated', payload: { titleId: 't1', name: '作品' } },
+			{
+				type: 'RepresentationTypesConfigured',
+				payload: {
+					titleId: 't1',
+					enabledTypes: ['final'],
+					configuredBy: 'admin1',
+					configuredAt: now.toISOString(),
+				},
+			},
+		];
+		expect(evolveRepresentationTypesConfig(events)).toEqual(['final']);
+	});
+});
+
+describe('applyRepresentationTypesDefault', () => {
+	it('defaults to every type when the title has never configured a subset', () => {
+		expect(applyRepresentationTypesDefault([])).toEqual(new Set(REPRESENTATION_TYPES));
+	});
+
+	it('uses exactly the configured subset once one has been chosen', () => {
+		expect(applyRepresentationTypesDefault(['storyboard', 'final'])).toEqual(
+			new Set(['storyboard', 'final']),
+		);
 	});
 });

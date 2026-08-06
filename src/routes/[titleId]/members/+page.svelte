@@ -8,13 +8,14 @@
 	import Users from '@lucide/svelte/icons/users';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
-	import BackLink from '$lib/components/BackLink.svelte';
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import ErrorNotice from '$lib/components/ErrorNotice.svelte';
 	import FormField from '$lib/components/FormField.svelte';
 	import FormInput from '$lib/components/FormInput.svelte';
 	import FormSelect from '$lib/components/FormSelect.svelte';
 	import Panel from '$lib/components/Panel.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import type { PageProps } from './$types';
 	import type { PermissionLevel } from '$lib/core/membership';
 
@@ -45,19 +46,19 @@
 	function formatDate(date: Date | null): string {
 		return date ? date.toLocaleDateString(getLocale()) : m.label_no_expiry();
 	}
+
+	const inviteOpen = $derived(!!form?.message);
 </script>
 
-<p>
-	<BackLink href="/{data.title.id}">{data.title.name}</BackLink>
-</p>
-<h1 class="text-foreground mt-2 flex items-center gap-2 text-2xl font-bold">
-	<Users size={22} class="text-primary" aria-hidden="true" />
-	{data.title.name}
-	{m.members_heading_suffix()}
-</h1>
-<p class="text-muted mt-1 text-sm">
-	{m.members_hint()}
-</p>
+<Breadcrumb
+	items={[
+		{ label: m.nav_back_to_titles(), href: '/' },
+		{ label: data.title.name, href: `/${data.title.id}` },
+		{ label: m.members_heading_suffix() },
+	]}
+/>
+
+<PageHeader title={m.members_heading_suffix()} subtitle={m.members_hint()} icon={Users} />
 
 {#if form?.message}
 	<ErrorNotice message={form.message} class="mt-4" />
@@ -127,81 +128,88 @@
 	</table>
 </div>
 
-<section class="mt-8">
-	<h2 class="text-foreground mb-3 flex items-center gap-1.5 text-lg font-semibold">
-		<UserPlus size={18} aria-hidden="true" />
+<details class="border-border bg-surface mt-6 rounded-lg border" open={inviteOpen}>
+	<summary
+		class="text-foreground flex cursor-pointer list-none items-center gap-1.5 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden"
+	>
+		<UserPlus size={16} aria-hidden="true" />
 		{m.invite_heading()}
-	</h2>
-	<Panel tag="form" method="POST" action="?/invite" class="space-y-4">
-		<fieldset class="space-y-2">
-			<legend class="text-foreground text-sm font-medium">{m.invite_who_legend()}</legend>
-			<FormField label={m.invite_existing_label()}>
-				<FormSelect name="existingPersonId">
-					<option value="">{m.invite_new_option()}</option>
-					{#each data.persons as person (person.id)}
-						<option value={person.id}
-							>{person.name}{person.email ? `（${person.email}）` : ''}</option
-						>
-					{/each}
-				</FormSelect>
-			</FormField>
-			<p class="text-muted text-xs">{m.invite_new_hint()}</p>
-			<div class="flex flex-wrap gap-2">
-				<FormField label={m.label_name()}>
-					<FormInput type="text" name="newName" />
-				</FormField>
-				<FormField label={m.label_email_internal_required()}>
-					<FormInput type="email" name="newEmail" />
-				</FormField>
-				<FormField label={m.label_account_type()}>
-					<FormSelect name="newAccountType">
-						<option value="internal">{m.account_type_internal_option()}</option>
-						<option value="external">{m.account_type_external_option()}</option>
+	</summary>
+	<div class="border-border border-t p-4">
+		<Panel tag="form" method="POST" action="?/invite" class="space-y-4">
+			<fieldset class="space-y-2">
+				<legend class="text-foreground text-sm font-medium">{m.invite_who_legend()}</legend>
+				<FormField label={m.invite_existing_label()}>
+					<FormSelect name="existingPersonId">
+						<option value="">{m.invite_new_option()}</option>
+						{#each data.persons as person (person.id)}
+							<option value={person.id}
+								>{person.name}{person.email ? `（${person.email}）` : ''}</option
+							>
+						{/each}
 					</FormSelect>
 				</FormField>
-			</div>
-		</fieldset>
-
-		<fieldset class="space-y-2">
-			<legend class="text-foreground text-sm font-medium">{m.invite_scope_legend()}</legend>
-			<div class="flex flex-wrap gap-2">
-				<FormField label={m.label_scope()}>
-					<FormSelect name="scopeType">
-						<option value="title">{m.scope_whole_title()}</option>
-						<option value="timeline">{m.scope_timeline_only_option()}</option>
-					</FormSelect>
-				</FormField>
-				{#if data.timelines.length > 0}
-					<FormField label={m.label_scope_timeline_select()}>
-						<FormSelect name="scopeTimelineId">
-							{#each data.timelines as timeline (timeline.id)}
-								<option value={timeline.id}
-									>{m.episode_label({ season: timeline.season, episode: timeline.episode })}</option
-								>
-							{/each}
+				<p class="text-muted text-xs">{m.invite_new_hint()}</p>
+				<div class="flex flex-wrap gap-2">
+					<FormField label={m.label_name()}>
+						<FormInput type="text" name="newName" />
+					</FormField>
+					<FormField label={m.label_email_internal_required()}>
+						<FormInput type="email" name="newEmail" />
+					</FormField>
+					<FormField label={m.label_account_type()}>
+						<FormSelect name="newAccountType">
+							<option value="internal">{m.account_type_internal_option()}</option>
+							<option value="external">{m.account_type_external_option()}</option>
 						</FormSelect>
 					</FormField>
-				{/if}
-				<FormField label={m.label_permission_level()}>
-					<FormSelect name="permissionLevel">
-						<option value="viewer">{m.permission_viewer_option()}</option>
-						<option value="contributor">{m.permission_contributor_option()}</option>
-						<option value="reviewer">{m.permission_reviewer_option()}</option>
-						<option value="admin">{m.permission_admin_option()}</option>
-					</FormSelect>
-				</FormField>
-				<FormField label={m.label_process_scope()}>
-					<FormInput type="text" name="processScope" placeholder="作画, 動画" />
-				</FormField>
-				<FormField label={m.label_expiry_required_hint()}>
-					<FormInput type="date" name="expiresAt" />
-				</FormField>
-			</div>
-		</fieldset>
+				</div>
+			</fieldset>
 
-		<Button type="submit">
-			<UserPlus size={16} aria-hidden="true" />
-			{m.invite_heading()}
-		</Button>
-	</Panel>
-</section>
+			<fieldset class="space-y-2">
+				<legend class="text-foreground text-sm font-medium">{m.invite_scope_legend()}</legend>
+				<div class="flex flex-wrap gap-2">
+					<FormField label={m.label_scope()}>
+						<FormSelect name="scopeType">
+							<option value="title">{m.scope_whole_title()}</option>
+							<option value="timeline">{m.scope_timeline_only_option()}</option>
+						</FormSelect>
+					</FormField>
+					{#if data.timelines.length > 0}
+						<FormField label={m.label_scope_timeline_select()}>
+							<FormSelect name="scopeTimelineId">
+								{#each data.timelines as timeline (timeline.id)}
+									<option value={timeline.id}
+										>{m.episode_label({
+											season: timeline.season,
+											episode: timeline.episode,
+										})}</option
+									>
+								{/each}
+							</FormSelect>
+						</FormField>
+					{/if}
+					<FormField label={m.label_permission_level()}>
+						<FormSelect name="permissionLevel">
+							<option value="viewer">{m.permission_viewer_option()}</option>
+							<option value="contributor">{m.permission_contributor_option()}</option>
+							<option value="reviewer">{m.permission_reviewer_option()}</option>
+							<option value="admin">{m.permission_admin_option()}</option>
+						</FormSelect>
+					</FormField>
+					<FormField label={m.label_process_scope()}>
+						<FormInput type="text" name="processScope" placeholder="作画, 動画" />
+					</FormField>
+					<FormField label={m.label_expiry_required_hint()}>
+						<FormInput type="date" name="expiresAt" />
+					</FormField>
+				</div>
+			</fieldset>
+
+			<Button type="submit">
+				<UserPlus size={16} aria-hidden="true" />
+				{m.invite_heading()}
+			</Button>
+		</Panel>
+	</div>
+</details>

@@ -1,4 +1,5 @@
 import {
+	REPRESENTATION_TYPES,
 	decideRepresentation,
 	evolveRepresentation,
 	type RepresentationError,
@@ -44,7 +45,8 @@ export async function submitReview(
 				comment: input.comment,
 			},
 			state,
-			{ now },
+			// SubmitReviewのdecideはenabledTypesを参照しない（representation.tsのRepresentationContext参照）のでダミー値でよい
+			{ now, enabledTypes: new Set(REPRESENTATION_TYPES) },
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 

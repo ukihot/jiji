@@ -1,4 +1,5 @@
 import {
+	REPRESENTATION_TYPES,
 	decideRepresentation,
 	evolveRepresentation,
 	type RepresentationError,
@@ -74,7 +75,8 @@ export async function sealVersion(
 				sealedBy: input.sealedBy,
 			},
 			state,
-			{ now },
+			// SealVersionのdecideはenabledTypesを参照しないのでダミー値でよい（submit-review.tsと同じ扱い）
+			{ now, enabledTypes: new Set(REPRESENTATION_TYPES) },
 		);
 		if (!decision.ok) return { ok: false, error: decision.error };
 

@@ -1,5 +1,6 @@
 import {
 	REPRESENTATION_TYPES,
+	applyRepresentationTypesDefault,
 	type DerivedFromRelation,
 	type RepresentationType,
 	type ReviewResult,
@@ -7,6 +8,7 @@ import {
 import type { SqliteDb } from '../../db';
 import {
 	getSealByVersion,
+	listEnabledRepresentationTypes,
 	listRepresentationCurrentVersionsByCut,
 	listRepresentationsByCut,
 	listReviewsByVersion,
@@ -61,6 +63,8 @@ export interface CutEvolutionVersionView {
 export interface CutEvolutionRepresentationView {
 	representationId: string | null;
 	type: RepresentationType;
+	/** このTitleで現在有効か（プロジェクト設定）。無効でも過去の提出があれば列自体は表示する */
+	isEnabled: boolean;
 	latestVersionId: string | null;
 	approvedVersionId: string | null;
 	versions: CutEvolutionVersionView[];
@@ -113,13 +117,22 @@ export async function getCutEvolutionView(
 		(await listRepresentationCurrentVersionsByCut(db, cutId)).map((row) => [row.type, row]),
 	);
 
+	// design.md 4.0.2節改訂: プロジェクト設定で無効化された種別は、過去の提出が無い限り列自体を出さない
+	// （P-04: 過去は消さないので、無効化後も既存の提出履歴は引き続き見える）
+	const enabledTypes = applyRepresentationTypesDefault(
+		await listEnabledRepresentationTypes(db, titleId),
+	);
+	const visibleTypes = REPRESENTATION_TYPES.filter(
+		(type) => enabledTypes.has(type) || repByType.has(type),
+	);
+
 	// 1周目: このCut全体のVersionを先にすべて集め、derivedFromのラベル解決（どのRepresentation/seqか）に使う
 	const versionsByType = new Map<RepresentationType, VersionWithSubmissionRow[]>();
 	const versionLabelById = new Map<
 		string,
 		{ representationType: RepresentationType; seq: number }
 	>();
-	for (const type of REPRESENTATION_TYPES) {
+	for (const type of visibleTypes) {
 		const rep = repByType.get(type);
 		if (!rep) continue;
 		const versions = await listVersionsByRepresentation(db, rep.id);
@@ -131,13 +144,15 @@ export async function getCutEvolutionView(
 
 	// 2周目: 各Versionの表示用ビューを組み立てる（reviews/seal/derivedFromラベルを解決）
 	const representations: CutEvolutionRepresentationView[] = await Promise.all(
-		REPRESENTATION_TYPES.map(async (type): Promise<CutEvolutionRepresentationView> => {
+		visibleTypes.map(async (type): Promise<CutEvolutionRepresentationView> => {
 			const rep = repByType.get(type);
 			const current = currentByType.get(type);
+			const isEnabled = enabledTypes.has(type);
 			if (!rep) {
 				return {
 					representationId: null,
 					type,
+					isEnabled,
 					latestVersionId: null,
 					approvedVersionId: null,
 					versions: [],
@@ -198,6 +213,7 @@ export async function getCutEvolutionView(
 			return {
 				representationId: rep.id,
 				type,
+				isEnabled,
 				latestVersionId: current?.latestVersionId ?? null,
 				approvedVersionId: current?.approvedVersionId ?? null,
 				versions,

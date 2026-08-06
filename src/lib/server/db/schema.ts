@@ -1,4 +1,10 @@
-import { type AnySQLiteColumn, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+	type AnySQLiteColumn,
+	integer,
+	primaryKey,
+	sqliteTable,
+	text,
+} from 'drizzle-orm/sqlite-core';
 
 /**
  * イベントログ（design.md 5章）。追記専用。
@@ -256,6 +262,34 @@ export const representationCurrentVersion = sqliteTable('representation_current_
 	latestVersionId: text('latest_version_id').notNull(),
 	approvedVersionId: text('approved_version_id'),
 });
+
+/**
+ * design.md 4.0.2節改訂: title_representation_type | title_id, type
+ * そのTitle（プロジェクト）で有効なRepresentation種別の投影（存在＝有効）。行が1つも無いTitleは
+ * 「まだ設定していない」＝全種類が有効という既定として扱う（Core側 applyRepresentationTypesDefault参照）。
+ * 正本は'title-representation-config'+titleIdストリームのRepresentationTypesConfiguredイベント。
+ */
+export const titleRepresentationType = sqliteTable(
+	'title_representation_type',
+	{
+		titleId: text('title_id')
+			.notNull()
+			.references(() => title.id),
+		type: text('type')
+			.$type<
+				| 'storyboard'
+				| 'animatic'
+				| 'layout'
+				| 'animation'
+				| 'bg'
+				| 'cg_render'
+				| 'composite'
+				| 'final'
+			>()
+			.notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.titleId, t.type] })],
+);
 
 // design.md 4.1節/8.2節: membership_state
 export const membershipState = sqliteTable('membership_state', {

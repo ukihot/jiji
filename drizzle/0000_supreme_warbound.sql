@@ -147,6 +147,13 @@ CREATE TABLE `title` (
 	`name` text NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE `title_representation_type` (
+	`title_id` text NOT NULL,
+	`type` text NOT NULL,
+	PRIMARY KEY(`title_id`, `type`),
+	FOREIGN KEY (`title_id`) REFERENCES `title`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
 CREATE TABLE `version` (
 	`id` text PRIMARY KEY NOT NULL,
 	`submission_id` text NOT NULL,

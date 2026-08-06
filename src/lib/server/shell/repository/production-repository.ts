@@ -12,6 +12,7 @@ import {
 	review,
 	seal,
 	submission,
+	titleRepresentationType,
 	version,
 } from '../../db/schema';
 import type { ProcessStatus } from './timeline-repository';
@@ -225,6 +226,31 @@ export async function listRepresentationCurrentVersionsByCut(
 		latestVersionId: row.latestVersionId ?? null,
 		approvedVersionId: row.approvedVersionId ?? null,
 	}));
+}
+
+// ---- title_representation_type（投影。design.md 4.0.2節改訂: プロジェクトごとのRepresentation設定） ----
+
+export async function listEnabledRepresentationTypes(
+	db: SqliteQueryable,
+	titleId: string,
+): Promise<RepresentationType[]> {
+	const rows = await db
+		.select({ type: titleRepresentationType.type })
+		.from(titleRepresentationType)
+		.where(eq(titleRepresentationType.titleId, titleId));
+	return rows.map((row) => row.type);
+}
+
+/** 設定は常にフルセットで置き換える（差分ではない）。既存行を全消しして選ばれた分だけ入れ直す */
+export async function replaceEnabledRepresentationTypes(
+	db: SqliteQueryable,
+	titleId: string,
+	types: readonly RepresentationType[],
+): Promise<void> {
+	await db.delete(titleRepresentationType).where(eq(titleRepresentationType.titleId, titleId));
+	for (const type of types) {
+		await db.insert(titleRepresentationType).values({ titleId, type });
+	}
 }
 
 /**

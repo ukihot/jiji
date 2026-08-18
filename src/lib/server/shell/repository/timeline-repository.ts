@@ -72,6 +72,24 @@ export interface CutRow {
 	sceneTags: string[];
 }
 
+export async function getCut(db: SqliteQueryable, cutId: string): Promise<CutRow | null> {
+	const rows = await db
+		.select({
+			id: timelineItem.id,
+			timelineId: timelineItem.timelineId,
+			number: timelineItem.label,
+			sortOrder: timelineItem.sortOrder,
+			plannedFrames: timelineItem.widthFrames,
+			sceneTags: cut.sceneTags,
+		})
+		.from(timelineItem)
+		.innerJoin(cut, eq(cut.id, timelineItem.id))
+		.where(eq(timelineItem.id, cutId));
+	const row = rows[0];
+	if (!row) return null;
+	return { ...row, plannedFrames: row.plannedFrames ?? 0 };
+}
+
 export async function listCutsByTimeline(
 	db: SqliteQueryable,
 	timelineId: string,
@@ -151,4 +169,24 @@ export async function replaceBandView(
 	for (const row of rows) {
 		await db.insert(timelineBandView).values(row);
 	}
+}
+
+export type ProcessStatus = Record<
+	string,
+	{ latestVersionId: string; approvedVersionId: string | null }
+> | null;
+
+/**
+ * design.md 4.1節: timeline_band_view.process_status。CutAdded/並べ替えのオフセット計算とは
+ * 無関係に、Submission/Review発生のたびにその1カット分だけ更新する（帯全体の再計算はしない）。
+ */
+export async function updateBandViewProcessStatus(
+	db: SqliteQueryable,
+	timelineItemId: string,
+	processStatus: ProcessStatus,
+): Promise<void> {
+	await db
+		.update(timelineBandView)
+		.set({ processStatus })
+		.where(eq(timelineBandView.timelineItemId, timelineItemId));
 }

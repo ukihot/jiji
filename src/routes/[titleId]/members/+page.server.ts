@@ -1,13 +1,18 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import type { PermissionLevel } from '$lib/core/membership';
+import { canWorkspaceRole, isWorkspaceRole } from '$lib/core/workspace-role';
+import * as m from '$lib/paraglide/messages';
 import { createPerson } from '$lib/server/shell/commands/create-person';
 import { grantMembership } from '$lib/server/shell/commands/grant-membership';
 import { revokeMembership } from '$lib/server/shell/commands/revoke-membership';
 import { updateMembership } from '$lib/server/shell/commands/update-membership';
-import { hasAtLeast } from '$lib/server/shell/authorization';
 import { getMembership } from '$lib/server/shell/repository/membership-repository';
-import { listPersons } from '$lib/server/shell/repository/person-repository';
+import {
+	getPerson,
+	listPersons,
+	updateWorkspaceRole,
+} from '$lib/server/shell/repository/person-repository';
 import { getTitle, listTimelinesByTitle } from '$lib/server/shell/repository/timeline-repository';
 import { listMembers } from '$lib/server/shell/queries/list-members';
 
@@ -20,12 +25,9 @@ function isPermissionLevel(value: unknown): value is PermissionLevel {
 /** design.md 8.6節: 作品全体スコープ ＋ その作品配下の各話数スコープのmembershipをまとめて見せる */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const title = await getTitle(locals.db, params.titleId);
-	if (!title) error(404, '作品が見つかりません');
-	if (
-		!locals.currentPerson ||
-		!(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin'))
-	) {
-		error(403, 'この作品の管理者だけがメンバー管理画面を開けます');
+	if (!title) error(404, m.error_title_not_found());
+	if (!canWorkspaceRole(locals.currentPerson?.workspaceRole, 'manageWorkspaceRoles')) {
+		error(403, m.error_members_page_admin_required());
 	}
 
 	const timelines = await listTimelinesByTitle(locals.db, params.titleId);
@@ -49,9 +51,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 export const actions: Actions = {
 	invite: async ({ request, params, locals }) => {
-		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (!(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin'))) {
-			return fail(403, { message: 'この作品の管理者だけがメンバーを追加できます' });
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageWorkspaceRoles')) {
+			return fail(403, { message: m.error_admin_required_invite() });
 		}
 
 		const formData = await request.formData();
@@ -70,27 +72,22 @@ export const actions: Actions = {
 			personId = existingPersonId;
 		} else {
 			if (typeof newName !== 'string' || newName.trim().length === 0) {
-				return fail(400, {
-					message: '既存メンバーを選ぶか、新しいメンバーの名前を入力してください',
-				});
+				return fail(400, { message: m.error_invite_name_required() });
 			}
 			if (newAccountType !== 'internal' && newAccountType !== 'external') {
-				return fail(400, { message: 'アカウント種別を選んでください' });
+				return fail(400, { message: m.error_account_type_required() });
 			}
 			const createResult = await createPerson(locals.db, {
 				name: newName,
 				email: typeof newEmail === 'string' && newEmail.trim().length > 0 ? newEmail : null,
 				accountType: newAccountType,
 			});
-			if (!createResult.ok)
-				return fail(400, {
-					message: '新しいメンバーを作成できませんでした（内部ユーザーはメール必須です）',
-				});
+			if (!createResult.ok) return fail(400, { message: m.error_person_create_failed() });
 			personId = createResult.personId;
 		}
 
 		if (!isPermissionLevel(permissionLevel)) {
-			return fail(400, { message: '権限レベルを選んでください' });
+			return fail(400, { message: m.error_permission_required() });
 		}
 
 		const resolvedScopeType: 'title' | 'timeline' = scopeType === 'timeline' ? 'timeline' : 'title';
@@ -125,10 +122,10 @@ export const actions: Actions = {
 		if (!result.ok) {
 			const message =
 				result.error.kind === 'expiry_required'
-					? '単話参加・外部委託には有効期限の指定が必須です（design.md 8.3節）'
+					? m.error_expiry_required_for_scope()
 					: result.error.kind === 'person_not_found'
-						? '対象の人物が見つかりません'
-						: 'メンバーを追加できませんでした';
+						? m.error_person_not_found()
+						: m.error_invite_failed();
 			return fail(400, { message });
 		}
 
@@ -136,20 +133,20 @@ export const actions: Actions = {
 	},
 
 	updatePermission: async ({ request, params, locals }) => {
-		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (!(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin'))) {
-			return fail(403, { message: '権限がありません' });
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageWorkspaceRoles')) {
+			return fail(403, { message: m.error_no_permission() });
 		}
 
 		const formData = await request.formData();
 		const membershipId = formData.get('membershipId');
 		const permissionLevel = formData.get('permissionLevel');
-		if (typeof membershipId !== 'string') return fail(400, { message: '不正なリクエストです' });
+		if (typeof membershipId !== 'string') return fail(400, { message: m.error_invalid_request() });
 		if (!isPermissionLevel(permissionLevel))
-			return fail(400, { message: '権限レベルを選んでください' });
+			return fail(400, { message: m.error_permission_required() });
 
 		const current = await getMembership(locals.db, membershipId);
-		if (!current) return fail(404, { message: '見つかりません' });
+		if (!current) return fail(404, { message: m.error_not_found() });
 
 		const result = await updateMembership(locals.db, {
 			membershipId,
@@ -159,22 +156,22 @@ export const actions: Actions = {
 		if (!result.ok) {
 			const message =
 				result.error.kind === 'last_admin_lockout'
-					? 'この作品で最後のadminを降格させることはできません（design.md 8.3節）'
-					: '更新できませんでした';
+					? m.error_last_admin_demote()
+					: m.error_update_failed();
 			return fail(400, { message });
 		}
 		return { success: true };
 	},
 
 	revoke: async ({ request, params, locals }) => {
-		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (!(await hasAtLeast(locals.db, locals.currentPerson.id, params.titleId, 'admin'))) {
-			return fail(403, { message: '権限がありません' });
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageWorkspaceRoles')) {
+			return fail(403, { message: m.error_no_permission() });
 		}
 
 		const formData = await request.formData();
 		const membershipId = formData.get('membershipId');
-		if (typeof membershipId !== 'string') return fail(400, { message: '不正なリクエストです' });
+		if (typeof membershipId !== 'string') return fail(400, { message: m.error_invalid_request() });
 
 		const result = await revokeMembership(locals.db, {
 			membershipId,
@@ -183,10 +180,52 @@ export const actions: Actions = {
 		if (!result.ok) {
 			const message =
 				result.error.kind === 'last_admin_lockout'
-					? 'この作品で最後のadminを外すことはできません（design.md 8.3節）'
-					: '取り消せませんでした';
+					? m.error_last_admin_revoke()
+					: m.error_revoke_failed();
 			return fail(400, { message });
 		}
+		return { success: true };
+	},
+
+	updateWorkspaceRole: async ({ request, locals }) => {
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageWorkspaceRoles')) {
+			return fail(403, { message: m.error_no_permission() });
+		}
+		const formData = await request.formData();
+		const personId = formData.get('personId');
+		const workspaceRole = formData.get('workspaceRole');
+		if (
+			typeof personId !== 'string' ||
+			!isWorkspaceRole(workspaceRole) ||
+			workspaceRole === 'owner'
+		) {
+			return fail(400, { message: m.error_invalid_request() });
+		}
+		if (personId === locals.currentPerson.id)
+			return fail(400, { message: m.error_no_permission() });
+		const person = await getPerson(locals.db, personId);
+		if (!person || person.accountType !== 'internal')
+			return fail(404, { message: m.error_not_found() });
+		await updateWorkspaceRole(locals.db, personId, workspaceRole);
+		return { success: true };
+	},
+
+	transferOwnership: async ({ request, locals }) => {
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageWorkspaceRoles')) {
+			return fail(403, { message: m.error_no_permission() });
+		}
+		const personId = (await request.formData()).get('personId');
+		if (typeof personId !== 'string') return fail(400, { message: m.error_invalid_request() });
+		const recipient = await getPerson(locals.db, personId);
+		if (!recipient || recipient.workspaceRole !== 'admin') {
+			return fail(400, { message: m.error_invalid_request() });
+		}
+		await locals.db.transaction(async (tx) => {
+			await updateWorkspaceRole(tx, locals.currentPerson!.id, 'admin');
+			await updateWorkspaceRole(tx, recipient.id, 'owner');
+		});
 		return { success: true };
 	},
 };

@@ -1,4 +1,5 @@
 import type { Cookies } from '@sveltejs/kit';
+import type { WorkspaceRole } from '$lib/core/workspace-role';
 
 /**
  * design.md 8.4節: 内部ユーザー認証。
@@ -16,6 +17,7 @@ export interface CurrentPerson {
 	/** design.md 8.5.2節: Magic Identity経由のexternalはメール無しで作成される */
 	email: string | null;
 	accountType: 'internal' | 'external';
+	workspaceRole: WorkspaceRole | null;
 }
 
 export function getCurrentPersonId(cookies: Cookies): string | null {

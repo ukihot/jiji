@@ -1,5 +1,6 @@
 import type { SqliteDb } from '../../db';
 import { insertPerson } from '../repository/person-repository';
+import type { WorkspaceRole } from '$lib/core/workspace-role';
 
 /**
  * Personの登録自体はdesign.mdの業務ルール（decide）を持たないため、Core層は経由しない。
@@ -11,6 +12,7 @@ export interface CreatePersonInput {
 	name: string;
 	email: string | null;
 	accountType: 'internal' | 'external';
+	workspaceRole?: WorkspaceRole | null;
 }
 
 export type CreatePersonResult =
@@ -32,6 +34,7 @@ export async function createPerson(
 		name: input.name,
 		email: input.email,
 		accountType: input.accountType,
+		workspaceRole: input.workspaceRole ?? (input.accountType === 'internal' ? 'member' : null),
 	});
 	return { ok: true, personId };
 }

@@ -64,6 +64,7 @@ export async function claimShareLink(
 			name: input.name,
 			email: null,
 			accountType: 'external',
+			workspaceRole: null,
 		});
 		await setClaimedPerson(tx, link.id, personId);
 

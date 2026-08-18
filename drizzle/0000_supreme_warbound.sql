@@ -52,6 +52,41 @@ CREATE TABLE `person` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `person_email_unique` ON `person` (`email`);--> statement-breakpoint
+CREATE TABLE `representation` (
+	`id` text PRIMARY KEY NOT NULL,
+	`cut_id` text NOT NULL,
+	`type` text NOT NULL,
+	`sort_order` integer NOT NULL,
+	FOREIGN KEY (`cut_id`) REFERENCES `cut`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `representation_current_version` (
+	`representation_id` text PRIMARY KEY NOT NULL,
+	`latest_version_id` text NOT NULL,
+	`approved_version_id` text
+);
+--> statement-breakpoint
+CREATE TABLE `review` (
+	`id` text PRIMARY KEY NOT NULL,
+	`version_id` text NOT NULL,
+	`reviewer_id` text NOT NULL,
+	`result` text NOT NULL,
+	`comment` text,
+	`reviewed_at` integer NOT NULL,
+	FOREIGN KEY (`version_id`) REFERENCES `version`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`reviewer_id`) REFERENCES `person`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `seal` (
+	`id` text PRIMARY KEY NOT NULL,
+	`version_id` text NOT NULL,
+	`hash` text NOT NULL,
+	`sealed_by` text NOT NULL,
+	`sealed_at` integer NOT NULL,
+	FOREIGN KEY (`version_id`) REFERENCES `version`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`sealed_by`) REFERENCES `person`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
 CREATE TABLE `share_link` (
 	`id` text PRIMARY KEY NOT NULL,
 	`token_hash` text NOT NULL,
@@ -67,6 +102,18 @@ CREATE TABLE `share_link` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `share_link_token_hash_unique` ON `share_link` (`token_hash`);--> statement-breakpoint
+CREATE TABLE `submission` (
+	`id` text PRIMARY KEY NOT NULL,
+	`cut_id` text NOT NULL,
+	`representation_id` text NOT NULL,
+	`process_step` text NOT NULL,
+	`submitted_by` text NOT NULL,
+	`submitted_at` integer NOT NULL,
+	FOREIGN KEY (`cut_id`) REFERENCES `cut`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`representation_id`) REFERENCES `representation`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`submitted_by`) REFERENCES `person`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
 CREATE TABLE `timeline` (
 	`id` text PRIMARY KEY NOT NULL,
 	`title_id` text NOT NULL,
@@ -81,7 +128,8 @@ CREATE TABLE `timeline_band_view` (
 	`item_type` text NOT NULL,
 	`sort_order` integer NOT NULL,
 	`offset_frames` integer NOT NULL,
-	`width_frames` integer NOT NULL
+	`width_frames` integer NOT NULL,
+	`process_status` text
 );
 --> statement-breakpoint
 CREATE TABLE `timeline_item` (
@@ -97,4 +145,25 @@ CREATE TABLE `timeline_item` (
 CREATE TABLE `title` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `title_representation_type` (
+	`title_id` text NOT NULL,
+	`type` text NOT NULL,
+	PRIMARY KEY(`title_id`, `type`),
+	FOREIGN KEY (`title_id`) REFERENCES `title`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `version` (
+	`id` text PRIMARY KEY NOT NULL,
+	`submission_id` text NOT NULL,
+	`seq` integer NOT NULL,
+	`file_ref` text NOT NULL,
+	`proxy_ref` text,
+	`artifact_metadata` text,
+	`derived_from_version_id` text,
+	`derived_from_relation` text,
+	`created_at` integer NOT NULL,
+	FOREIGN KEY (`submission_id`) REFERENCES `submission`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`derived_from_version_id`) REFERENCES `version`(`id`) ON UPDATE no action ON DELETE no action
 );

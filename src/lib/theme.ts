@@ -18,6 +18,7 @@ export const THEMES = [
 
 export type ThemeId = (typeof THEMES)[number]['id'];
 export type ThemeMode = 'light' | 'dark';
+export type BurndownStyle = 'standard' | 'rough';
 
 export const DEFAULT_THEME: ThemeId = 'rurizora';
 export const DEFAULT_MODE: ThemeMode = 'light';
@@ -34,3 +35,8 @@ export function isThemeMode(value: string | undefined | null): value is ThemeMod
 
 export const THEME_COOKIE = 'jiji_theme';
 export const MODE_COOKIE = 'jiji_mode';
+export const BURNDOWN_STYLE_COOKIE = 'jiji_burndown_style';
+
+export function isBurndownStyle(value: string | undefined | null): value is BurndownStyle {
+	return value === 'standard' || value === 'rough';
+}

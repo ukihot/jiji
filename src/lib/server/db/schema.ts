@@ -1,4 +1,10 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+	type AnySQLiteColumn,
+	integer,
+	primaryKey,
+	sqliteTable,
+	text,
+} from 'drizzle-orm/sqlite-core';
 
 /**
  * イベントログ（design.md 5章）。追記専用。
@@ -73,6 +79,145 @@ export const person = sqliteTable('person', {
 	name: text('name').notNull(),
 	email: text('email').unique(),
 	accountType: text('account_type').$type<'internal' | 'external'>().notNull(),
+	/** internalのみ。nullは共有URLから来た参加者 */
+	workspaceRole: text('workspace_role').$type<'owner' | 'admin' | 'member'>(),
+});
+
+/**
+ * 制作対象への担当割当。独立した「タスク」ではなく、作品・話数・カット・工程という
+ * 実体に対する責務を表す投影。現在の担当者はこの表、変更履歴はeventに保存する。
+ */
+export const workAssignment = sqliteTable('work_assignment', {
+	id: text('id').primaryKey(),
+	targetType: text('target_type')
+		.$type<'title' | 'timeline' | 'cut' | 'representation' | 'process_node'>()
+		.notNull(),
+	targetId: text('target_id').notNull(),
+	assigneeId: text('assignee_id')
+		.notNull()
+		.references(() => person.id),
+	assignedAt: integer('assigned_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/**
+ * Production Kernel（design.md 11章）。公開済みBlueprintは不変で、編集は常に次versionの
+ * 下書きとして行う。過去のカットがどの工程定義に従ったかを再生できるようにする。
+ */
+export const productionBlueprint = sqliteTable('production_blueprint', {
+	id: text('id').primaryKey(),
+	titleId: text('title_id')
+		.notNull()
+		.references(() => title.id),
+	version: integer('version').notNull(),
+	status: text('status').$type<'draft' | 'published' | 'retired'>().notNull(),
+	basedOnBlueprintId: text('based_on_blueprint_id'),
+	publishedAt: integer('published_at', { mode: 'timestamp_ms' }),
+	createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const processNode = sqliteTable('process_node', {
+	id: text('id').primaryKey(),
+	blueprintId: text('blueprint_id')
+		.notNull()
+		.references(() => productionBlueprint.id),
+	capabilityKey: text('capability_key').notNull(),
+	representationType: text('representation_type').$type<
+		| 'storyboard'
+		| 'animatic'
+		| 'layout'
+		| 'animation'
+		| 'bg'
+		| 'cg_render'
+		| 'composite'
+		| 'final'
+		| null
+	>(),
+	kind: text('kind').$type<'deliverable' | 'review' | 'milestone'>().notNull(),
+	required: integer('required', { mode: 'boolean' }).notNull(),
+	sortHint: integer('sort_hint').notNull(),
+});
+
+export const processEdge = sqliteTable('process_edge', {
+	id: text('id').primaryKey(),
+	blueprintId: text('blueprint_id')
+		.notNull()
+		.references(() => productionBlueprint.id),
+	fromNodeId: text('from_node_id')
+		.notNull()
+		.references(() => processNode.id),
+	toNodeId: text('to_node_id')
+		.notNull()
+		.references(() => processNode.id),
+	relation: text('relation').$type<'requires' | 'feeds' | 'informs'>().notNull(),
+});
+
+/** 作品内の表示名と安定したCapabilityを分離する。過去の語彙もイベントから再現できる。 */
+export const studioTerm = sqliteTable('studio_term', {
+	id: text('id').primaryKey(),
+	titleId: text('title_id')
+		.notNull()
+		.references(() => title.id),
+	capabilityKey: text('capability_key').notNull(),
+	displayName: text('display_name').notNull(),
+	aliases: text('aliases', { mode: 'json' }).$type<string[]>().notNull(),
+	usageNote: text('usage_note'),
+	activeFromEventId: text('active_from_event_id').notNull(),
+	retiredAt: integer('retired_at', { mode: 'timestamp_ms' }),
+});
+
+/** ゲートは工程nodeの定義、通過した事実はgate_evidenceに分ける。 */
+export const reviewGate = sqliteTable('review_gate', {
+	id: text('id').primaryKey(),
+	processNodeId: text('process_node_id')
+		.notNull()
+		.references(() => processNode.id),
+	gateKey: text('gate_key').notNull(),
+	reviewerPolicy: text('reviewer_policy', { mode: 'json' }).$type<string[]>().notNull(),
+	required: integer('required', { mode: 'boolean' }).notNull(),
+});
+
+export const gateEvidence = sqliteTable('gate_evidence', {
+	id: text('id').primaryKey(),
+	gateId: text('gate_id')
+		.notNull()
+		.references(() => reviewGate.id),
+	versionId: text('version_id')
+		.notNull()
+		.references(() => version.id),
+	versionHash: text('version_hash').notNull(),
+	reviewerId: text('reviewer_id')
+		.notNull()
+		.references(() => person.id),
+	result: text('result').$type<'passed' | 'returned'>().notNull(),
+	recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/** 前工程の創作判断を、根拠版と対象範囲に結び付ける。 */
+export const decisionCapsule = sqliteTable('decision_capsule', {
+	id: text('id').primaryKey(),
+	titleId: text('title_id')
+		.notNull()
+		.references(() => title.id),
+	scopeType: text('scope_type').$type<'title' | 'timeline' | 'cut'>().notNull(),
+	scopeId: text('scope_id').notNull(),
+	decisionKey: text('decision_key').notNull(),
+	decisionText: text('decision_text').notNull(),
+	status: text('status').$type<'open' | 'confirmed' | 'superseded'>().notNull(),
+	confirmedBy: text('confirmed_by').references(() => person.id),
+	confirmedAt: integer('confirmed_at', { mode: 'timestamp_ms' }),
+	createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const decisionEvidence = sqliteTable('decision_evidence', {
+	id: text('id').primaryKey(),
+	capsuleId: text('capsule_id')
+		.notNull()
+		.references(() => decisionCapsule.id),
+	versionId: text('version_id')
+		.notNull()
+		.references(() => version.id),
+	coverage: text('coverage', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+	role: text('role').$type<'reference' | 'approval' | 'test'>().notNull(),
 });
 
 /**
@@ -119,10 +264,121 @@ export const shareLink = sqliteTable('share_link', {
 	revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
 });
 
+/**
+ * design.md 4.0.2節: representation | id, cut_id, type(固定enum), sort_order
+ * Cutが工程を経て取る表現形態。type は8種の固定enumで、7章の工程DAGと同様にユーザー拡張は許可しない。
+ * 1 Cutにつき同じtypeは1件のみ（アプリ層で保証。SQLiteはUNIQUE(cut_id, type)を実際には未付与——
+ * db:push/db:studioが使えない制約下でのMVPでは複合UNIQUEの追加を見送り、decide側の重複防止に委ねる）。
+ */
+export const representation = sqliteTable('representation', {
+	id: text('id').primaryKey(),
+	cutId: text('cut_id')
+		.notNull()
+		.references(() => cut.id),
+	type: text('type')
+		.$type<
+			| 'storyboard'
+			| 'animatic'
+			| 'layout'
+			| 'animation'
+			| 'bg'
+			| 'cg_render'
+			| 'composite'
+			| 'final'
+		>()
+		.notNull(),
+	sortOrder: integer('sort_order').notNull(),
+});
+
+/**
+ * design.md 4章: submission | id, cut_id, representation_id, process_step, submitted_by, submitted_at
+ * MVP（Asset未実装）では常にCutへの提出のみを扱うため、cut_id/representation_idは両方notNullとする。
+ * Asset/CutAsset実装時にrepresentation_idをnullable化し、asset_idを追加する（design.md 9章の型）。
+ */
+export const submission = sqliteTable('submission', {
+	id: text('id').primaryKey(),
+	cutId: text('cut_id')
+		.notNull()
+		.references(() => cut.id),
+	representationId: text('representation_id')
+		.notNull()
+		.references(() => representation.id),
+	processStep: text('process_step').notNull(),
+	submittedBy: text('submitted_by')
+		.notNull()
+		.references(() => person.id),
+	submittedAt: integer('submitted_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/**
+ * design.md 4章/4.0.2節: version | id, submission_id, seq, file_ref, proxy_ref, artifact_metadata(json), created_at
+ * 追記専用（UPDATE/DELETE禁止）。eventと同じ理由でdb/bootstrap.tsにトリガーを持つ。
+ * artifact_metadataはEXR AOV/PSDレイヤー/PNGアルファ有無等、成果物形式ごとの内部構造メタデータのみを持つ
+ * （F-25）。プロキシは今回未実装のためproxy_refは常にnullのまま（ffmpegパイプラインは範囲外）。
+ * derived_from_version_id/relationは「このVersionがどのVersionから派生したか」という制作上の因果関係
+ * （別Representationの版から作られることが普通にある。例: Layout v5から作画してAnimation v1ができる）。
+ * 自己参照FKだが、UPDATE禁止のためこの列を後から差し替えることはできない（提出時に確定する）。
+ */
+export const version = sqliteTable('version', {
+	id: text('id').primaryKey(),
+	submissionId: text('submission_id')
+		.notNull()
+		.references(() => submission.id),
+	seq: integer('seq').notNull(),
+	fileRef: text('file_ref').notNull(),
+	proxyRef: text('proxy_ref'),
+	artifactMetadata: text('artifact_metadata', { mode: 'json' }).$type<Record<
+		string,
+		unknown
+	> | null>(),
+	derivedFromVersionId: text('derived_from_version_id').references(
+		(): AnySQLiteColumn => version.id,
+	),
+	derivedFromRelation: text('derived_from_relation').$type<
+		'refined' | 'converted' | 'replaced' | null
+	>(),
+	createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+// design.md 4章: review | id, version_id, reviewer_id, result, comment, reviewed_at
+export const review = sqliteTable('review', {
+	id: text('id').primaryKey(),
+	versionId: text('version_id')
+		.notNull()
+		.references(() => version.id),
+	reviewerId: text('reviewer_id')
+		.notNull()
+		.references(() => person.id),
+	result: text('result').$type<'approved' | 'returned'>().notNull(),
+	comment: text('comment'),
+	reviewedAt: integer('reviewed_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/**
+ * design.md 4章/6.2節: seal | id, version_id, hash, sealed_by, sealed_at
+ * 「その版を採用した」という事実の記録。Reviewとは明確に別（representation.tsファイル冒頭コメント参照）。
+ * 追記専用（version/eventと同じ理由。db/bootstrap.tsにトリガーを持つ）。
+ * hashはversionの内容（file_ref/artifact_metadata/derived_from等）をcanonicalJson+SHA-256したもの
+ * （lib/core/event-hash.tsのcomputeEventHashを流用）。封印後の再計算差分で改竄を検知する。
+ */
+export const seal = sqliteTable('seal', {
+	id: text('id').primaryKey(),
+	versionId: text('version_id')
+		.notNull()
+		.references(() => version.id),
+	hash: text('hash').notNull(),
+	sealedBy: text('sealed_by')
+		.notNull()
+		.references(() => person.id),
+	sealedAt: integer('sealed_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 // ---- 投影テーブル（design.md 4.1節）：eventが正本。ここはCoreのproject関数の出力キャッシュ ----
 
-// design.md 4.1節: timeline_band_view | episode_id, timeline_item_id, item_type, offset_frames, width_frames, process_status(json)
-// MVPではprocess_statusを扱うSubmission/Reviewが未実装のため、そこは今回省略する。
+/**
+ * design.md 4.1節: timeline_band_view | episode_id, timeline_item_id, item_type, offset_frames, width_frames, process_status(json)
+ * process_statusはRepresentation種別をキーにしたマップ。cut以外の行では常にnull。
+ */
 export const timelineBandView = sqliteTable('timeline_band_view', {
 	timelineItemId: text('timeline_item_id').primaryKey(),
 	timelineId: text('timeline_id').notNull(),
@@ -130,7 +386,49 @@ export const timelineBandView = sqliteTable('timeline_band_view', {
 	sortOrder: integer('sort_order').notNull(),
 	offsetFrames: integer('offset_frames').notNull(),
 	widthFrames: integer('width_frames').notNull(),
+	processStatus: text('process_status', { mode: 'json' }).$type<Record<
+		string,
+		{ latestVersionId: string; approvedVersionId: string | null }
+	> | null>(),
 });
+
+/**
+ * design.md 4.1節: representation_current_version | representation_id, latest_version_id, approved_version_id
+ * 「最新版」「採用版」はRepresentation単位（要件定義6.2節）。approved_version_idはSeal実装時（design.md 6.3節）まで常にnull。
+ */
+export const representationCurrentVersion = sqliteTable('representation_current_version', {
+	representationId: text('representation_id').primaryKey(),
+	latestVersionId: text('latest_version_id').notNull(),
+	approvedVersionId: text('approved_version_id'),
+});
+
+/**
+ * design.md 4.0.2節改訂: title_representation_type | title_id, type
+ * そのTitle（プロジェクト）で有効なRepresentation種別の投影（存在＝有効）。行が1つも無いTitleは
+ * 「まだ設定していない」＝全種類が有効という既定として扱う（Core側 applyRepresentationTypesDefault参照）。
+ * 正本は'title-representation-config'+titleIdストリームのRepresentationTypesConfiguredイベント。
+ */
+export const titleRepresentationType = sqliteTable(
+	'title_representation_type',
+	{
+		titleId: text('title_id')
+			.notNull()
+			.references(() => title.id),
+		type: text('type')
+			.$type<
+				| 'storyboard'
+				| 'animatic'
+				| 'layout'
+				| 'animation'
+				| 'bg'
+				| 'cg_render'
+				| 'composite'
+				| 'final'
+			>()
+			.notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.titleId, t.type] })],
+);
 
 // design.md 4.1節/8.2節: membership_state
 export const membershipState = sqliteTable('membership_state', {

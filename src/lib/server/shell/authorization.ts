@@ -1,40 +1,34 @@
-import { isMembershipActive, type PermissionLevel } from '$lib/core/membership';
+import { isShareLinkActive } from '$lib/core/share-link';
 import type { SqliteDb } from '../db';
-import { listMembershipStateByScope } from './repository/membership-repository';
-
-const RANK: Record<PermissionLevel, number> = { viewer: 0, contributor: 1, reviewer: 2, admin: 3 };
-
-export function meetsLevel(level: PermissionLevel, min: PermissionLevel): boolean {
-	return RANK[level] >= RANK[min];
-}
+import { listShareLinks } from './repository/share-link-repository';
 
 /**
- * design.md 8.2節: メンバー管理・共有リンク発行のような操作は、呼び出し元のmembershipが
- * 十分な権限を持つかをルートハンドラ（+page.server.ts）側で確認してから行う。
- * Title/Timeline両スコープのうち、現在有効な最も高い権限で判定する。
+ * design.md 8.5節 Magic Identity: 共有リンク参加者が、そのcutを対象にした有効な
+ * contributorリンクを持っているか。ワークスペースロールを持つ内部ユーザーの認可は
+ * CoreのcanWorkspaceRoleで完結し、この関数は外部参加者の例外だけを扱う。
  */
-export async function hasAtLeast(
+export async function hasShareLinkContributorAccess(
 	db: SqliteDb,
 	personId: string,
-	titleId: string,
-	min: PermissionLevel,
+	cutId: string,
 	now: Date = new Date(),
-	timelineId?: string,
 ): Promise<boolean> {
-	const scopes: Array<{ scopeType: 'title' | 'timeline'; scopeId: string }> = [
-		{ scopeType: 'title', scopeId: titleId },
-	];
-	if (timelineId) scopes.push({ scopeType: 'timeline', scopeId: timelineId });
+	return hasShareLinkAccess(db, personId, cutId, now, 'contributor');
+}
 
-	for (const scope of scopes) {
-		const rows = await listMembershipStateByScope(db, scope.scopeType, scope.scopeId);
-		const matched = rows.some(
-			(row) =>
-				row.personId === personId &&
-				meetsLevel(row.permissionLevel, min) &&
-				isMembershipActive({ expiresAt: row.expiresAt, revokedAt: row.revokedAt }, now),
-		);
-		if (matched) return true;
-	}
-	return false;
+export async function hasShareLinkAccess(
+	db: SqliteDb,
+	personId: string,
+	cutId: string,
+	now: Date = new Date(),
+	minimum: 'viewer' | 'contributor' = 'viewer',
+): Promise<boolean> {
+	const links = await listShareLinks(db);
+	return links.some(
+		(link) =>
+			link.claimedPersonId === personId &&
+			(link.permissionLevel === 'contributor' || minimum === 'viewer') &&
+			link.targetCutIds.includes(cutId) &&
+			isShareLinkActive(link, now),
+	);
 }

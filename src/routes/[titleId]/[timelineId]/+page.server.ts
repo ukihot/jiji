@@ -1,38 +1,25 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import type { SharePermissionLevel } from '$lib/core/share-link';
+import { canWorkspaceRole } from '$lib/core/workspace-role';
+import * as m from '$lib/paraglide/messages';
 import { addCut } from '$lib/server/shell/commands/add-cut';
 import { createShareLink } from '$lib/server/shell/commands/create-share-link';
 import { revokeShareLink } from '$lib/server/shell/commands/revoke-share-link';
-import { hasAtLeast } from '$lib/server/shell/authorization';
 import { getTimelineView } from '$lib/server/shell/queries/get-timeline-view';
 import { listShareLinksForCuts } from '$lib/server/shell/queries/list-share-links';
+import { listInternalPersons } from '$lib/server/shell/repository/person-repository';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
+	if (!canWorkspaceRole(locals.currentPerson?.workspaceRole, 'viewWorkspace')) {
+		error(403, m.error_no_permission());
+	}
 	const view = await getTimelineView(locals.db, params.titleId, params.timelineId);
-	if (!view) error(404, 'タイムラインが見つかりません');
+	if (!view) error(404, m.error_timeline_not_found());
 
 	const now = new Date();
-	const canAddCut = locals.currentPerson
-		? await hasAtLeast(
-				locals.db,
-				locals.currentPerson.id,
-				params.titleId,
-				'contributor',
-				now,
-				params.timelineId,
-			)
-		: false;
-	const canShare = locals.currentPerson
-		? await hasAtLeast(
-				locals.db,
-				locals.currentPerson.id,
-				params.titleId,
-				'admin',
-				now,
-				params.timelineId,
-			)
-		: false;
+	const canAddCut = canWorkspaceRole(locals.currentPerson?.workspaceRole, 'manageProduction');
+	const canShare = canWorkspaceRole(locals.currentPerson?.workspaceRole, 'manageProduction');
 
 	const shareLinks = canShare
 		? await listShareLinksForCuts(
@@ -42,23 +29,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			)
 		: [];
 
-	return { view, currentPerson: locals.currentPerson, canAddCut, canShare, shareLinks };
+	return {
+		view,
+		currentPerson: locals.currentPerson,
+		canAddCut,
+		canShare,
+		shareLinks,
+		assignablePersons: canAddCut ? await listInternalPersons(locals.db) : [],
+	};
 };
 
 export const actions: Actions = {
 	addCut: async ({ request, params, locals }) => {
-		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (
-			!(await hasAtLeast(
-				locals.db,
-				locals.currentPerson.id,
-				params.titleId,
-				'contributor',
-				new Date(),
-				params.timelineId,
-			))
-		) {
-			return fail(403, { message: 'この話数にカットを追加する権限がありません' });
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageProduction')) {
+			return fail(403, { message: m.error_no_permission_add_cut() });
 		}
 
 		const formData = await request.formData();
@@ -66,6 +51,7 @@ export const actions: Actions = {
 		const sortOrder = Number(formData.get('sortOrder'));
 		const plannedFrames = Number(formData.get('plannedFrames'));
 		const sceneTagsRaw = formData.get('sceneTags');
+		const assigneeId = formData.get('assigneeId');
 		const sceneTags =
 			typeof sceneTagsRaw === 'string' && sceneTagsRaw.trim().length > 0
 				? sceneTagsRaw
@@ -75,13 +61,16 @@ export const actions: Actions = {
 				: [];
 
 		if (typeof number !== 'string' || number.trim().length === 0) {
-			return fail(400, { message: 'カット番号を入力してください' });
+			return fail(400, { message: m.error_cut_number_required() });
 		}
 		if (!Number.isInteger(sortOrder)) {
-			return fail(400, { message: '並び順は整数で入力してください' });
+			return fail(400, { message: m.error_sort_order_invalid() });
 		}
 		if (!Number.isFinite(plannedFrames) || plannedFrames <= 0) {
-			return fail(400, { message: '予定尺（コマ数）は1以上で入力してください' });
+			return fail(400, { message: m.error_planned_frames_invalid() });
+		}
+		if (typeof assigneeId !== 'string' || assigneeId.length === 0) {
+			return fail(400, { message: m.error_invalid_request() });
 		}
 
 		const result = await addCut(locals.db, {
@@ -90,29 +79,19 @@ export const actions: Actions = {
 			sortOrder,
 			plannedFrames,
 			sceneTags,
+			assigneeId,
 		});
 		if (!result.ok) {
-			return fail(400, {
-				message: 'カットを追加できませんでした（番号か並び順が重複している可能性があります）',
-			});
+			return fail(400, { message: m.error_add_cut_failed() });
 		}
 
 		return { success: true };
 	},
 
 	createShareLink: async ({ request, params, locals }) => {
-		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (
-			!(await hasAtLeast(
-				locals.db,
-				locals.currentPerson.id,
-				params.titleId,
-				'admin',
-				new Date(),
-				params.timelineId,
-			))
-		) {
-			return fail(403, { message: '共有リンクの発行にはこの作品の管理者権限が必要です' });
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageProduction')) {
+			return fail(403, { message: m.error_admin_required_sharelink() });
 		}
 
 		const formData = await request.formData();
@@ -122,13 +101,13 @@ export const actions: Actions = {
 		const permissionLevelRaw = formData.get('permissionLevel');
 		const expiresInDays = Number(formData.get('expiresInDays'));
 
-		if (cutIds.length === 0) return fail(400, { message: '対象カットを1つ以上選んでください' });
+		if (cutIds.length === 0) return fail(400, { message: m.error_no_cuts_selected() });
 		if (permissionLevelRaw !== 'viewer' && permissionLevelRaw !== 'contributor') {
-			return fail(400, { message: '権限レベルを選んでください' });
+			return fail(400, { message: m.error_permission_required() });
 		}
 		const permissionLevel: SharePermissionLevel = permissionLevelRaw;
 		if (!Number.isFinite(expiresInDays) || expiresInDays <= 0 || expiresInDays > 90) {
-			return fail(400, { message: '有効期限は1〜90日で指定してください（design.md: 最長90日）' });
+			return fail(400, { message: m.error_expiry_days_invalid() });
 		}
 
 		const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
@@ -138,36 +117,27 @@ export const actions: Actions = {
 			createdBy: locals.currentPerson.id,
 			expiresAt,
 		});
-		if (!result.ok) return fail(400, { message: '共有リンクを作成できませんでした' });
+		if (!result.ok) return fail(400, { message: m.error_sharelink_create_failed() });
 
 		const shareUrl = `${new URL(request.url).origin}/s/${result.token}`;
 		return { success: true, shareLinkCreated: { url: shareUrl, expiresAt } };
 	},
 
 	revokeShareLink: async ({ request, params, locals }) => {
-		if (!locals.currentPerson) return fail(401, { message: 'ログインしてください' });
-		if (
-			!(await hasAtLeast(
-				locals.db,
-				locals.currentPerson.id,
-				params.titleId,
-				'admin',
-				new Date(),
-				params.timelineId,
-			))
-		) {
-			return fail(403, { message: '権限がありません' });
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageProduction')) {
+			return fail(403, { message: m.error_no_permission() });
 		}
 
 		const formData = await request.formData();
 		const shareLinkId = formData.get('shareLinkId');
-		if (typeof shareLinkId !== 'string') return fail(400, { message: '不正なリクエストです' });
+		if (typeof shareLinkId !== 'string') return fail(400, { message: m.error_invalid_request() });
 
 		const result = await revokeShareLink(locals.db, {
 			shareLinkId,
 			revokedBy: locals.currentPerson.id,
 		});
-		if (!result.ok) return fail(400, { message: '取り消せませんでした' });
+		if (!result.ok) return fail(400, { message: m.error_revoke_failed() });
 
 		return { success: true };
 	},

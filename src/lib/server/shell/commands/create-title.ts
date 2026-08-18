@@ -4,11 +4,13 @@ import type { SqliteDb } from '../../db';
 import { appendEvent } from '../repository/event-repository';
 import { insertTitle } from '../repository/timeline-repository';
 import { grantMembershipInTx } from './grant-membership';
+import { replaceWorkAssignment } from '../repository/work-assignment-repository';
 
 export interface CreateTitleInput {
 	name: string;
 	/** 作成者。作成と同時にそのTitle全体のadmin membershipを付与する（最後のadminロックアウト防止の起点） */
 	createdBy: string;
+	assigneeId: string;
 }
 
 export type CreateTitleResult =
@@ -32,6 +34,13 @@ export async function createTitle(
 
 		await appendEvent(tx, 'title', titleId, decision.events[0], now);
 		await insertTitle(tx, { id: titleId, name: input.name });
+		await replaceWorkAssignment(tx, {
+			id: crypto.randomUUID(),
+			targetType: 'title',
+			targetId: titleId,
+			assigneeId: input.assigneeId,
+			assignedAt: now,
+		});
 
 		// design.md 8.3節「最後のadminロックアウト防止」の起点：作成者を自動でこのTitleのadminにする
 		const grantResult = await grantMembershipInTx(

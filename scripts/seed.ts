@@ -33,26 +33,36 @@ const db = await getDb();
 
 // 制作進行（内部・このTitleのadminになる）
 const producer = must(
-	await createPerson(db, { name: '山田太郎', email: 'yamada@example.com', accountType: 'internal' }),
-	'制作進行「山田太郎」を登録'
+	await createPerson(db, {
+		name: '山田太郎',
+		email: 'yamada@example.com',
+		accountType: 'internal',
+		workspaceRole: 'owner',
+	}),
+	'制作進行「山田太郎」を登録',
 );
 
 // 監督（内部・reviewer予定）
 const director = must(
-	await createPerson(db, { name: '鈴木花子', email: 'suzuki@example.com', accountType: 'internal' }),
-	'監督「鈴木花子」を登録'
+	await createPerson(db, {
+		name: '鈴木花子',
+		email: 'suzuki@example.com',
+		accountType: 'internal',
+		workspaceRole: 'member',
+	}),
+	'監督「鈴木花子」を登録',
 );
 
 // 単話だけ参加する外部の原画マン（メールなし。design.md 8.5.4節の「person + membership」パス）
 const keyAnimator = must(
 	await createPerson(db, { name: '佐藤次郎', email: null, accountType: 'external' }),
-	'単話参加の原画「佐藤次郎」を登録'
+	'単話参加の原画「佐藤次郎」を登録',
 );
 
 // 作品。作成と同時に山田太郎が自動でこのTitleのadminになる（design.md 8.3節）
 const title = must(
 	await createTitle(db, { name: 'サンプル作品', createdBy: producer.personId }),
-	'作品「サンプル作品」を作成（山田太郎が自動でadminに）'
+	'作品「サンプル作品」を作成（山田太郎が自動でadminに）',
 );
 
 must(
@@ -63,14 +73,14 @@ must(
 		permissionLevel: 'reviewer',
 		processScope: null,
 		grantedBy: producer.personId,
-		expiresAt: null
+		expiresAt: null,
 	}),
-	'鈴木花子にreviewer権限を付与（作品全体・無期限）'
+	'鈴木花子にreviewer権限を付与（作品全体・無期限）',
 );
 
 const timeline = must(
 	await createTimeline(db, { titleId: title.titleId, season: '1期', episode: 3 }),
-	'第3話のTimelineを作成'
+	'第3話のTimelineを作成',
 );
 
 // アニメ業界では1話だけ参加するスタッフが常態（design.md 8章）。
@@ -84,21 +94,21 @@ must(
 		permissionLevel: 'contributor',
 		processScope: ['作画'],
 		grantedBy: producer.personId,
-		expiresAt: animatorExpiresAt
+		expiresAt: animatorExpiresAt,
 	}),
-	`佐藤次郎に第3話だけcontributor権限を付与（期限: ${animatorExpiresAt.toLocaleDateString('ja-JP')}）`
+	`佐藤次郎に第3話だけcontributor権限を付与（期限: ${animatorExpiresAt.toLocaleDateString('ja-JP')}）`,
 );
 
 const cutSeeds = [
 	{ number: 'C-001', sortOrder: 0, plannedFrames: 48, sceneTags: ['朝', '屋内'] },
 	{ number: 'C-002', sortOrder: 1, plannedFrames: 72, sceneTags: ['朝', '屋内'] },
-	{ number: 'C-003', sortOrder: 2, plannedFrames: 120, sceneTags: ['夜', '屋外'] }
+	{ number: 'C-003', sortOrder: 2, plannedFrames: 120, sceneTags: ['夜', '屋外'] },
 ];
 const cutIds: string[] = [];
 for (const cut of cutSeeds) {
 	const result = must(
 		await addCut(db, { timelineId: timeline.timelineId, ...cut }),
-		`カット${cut.number}を追加（${cut.plannedFrames}コマ）`
+		`カット${cut.number}を追加（${cut.plannedFrames}コマ）`,
 	);
 	cutIds.push(result.cutId);
 }
@@ -110,9 +120,9 @@ const shareLink = must(
 		targetCutIds: cutIds.slice(0, 1),
 		permissionLevel: 'contributor',
 		createdBy: producer.personId,
-		expiresAt: shareLinkExpiresAt
+		expiresAt: shareLinkExpiresAt,
 	}),
-	'外部スタジオ向け共有リンクを発行'
+	'外部スタジオ向け共有リンクを発行',
 );
 
 console.log('\n--- 完了 ---');

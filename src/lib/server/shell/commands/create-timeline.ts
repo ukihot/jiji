@@ -2,11 +2,13 @@ import { decideTimeline, type TimelineError } from '$lib/core/timeline';
 import type { SqliteDb } from '../../db';
 import { appendEvent } from '../repository/event-repository';
 import { insertTimeline, titleExists } from '../repository/timeline-repository';
+import { replaceWorkAssignment } from '../repository/work-assignment-repository';
 
 export interface CreateTimelineInput {
 	titleId: string;
 	season: string;
 	episode: number;
+	assigneeId: string;
 }
 
 export type CreateTimelineResult =
@@ -39,6 +41,13 @@ export async function createTimeline(
 			titleId: input.titleId,
 			season: input.season,
 			episode: input.episode,
+		});
+		await replaceWorkAssignment(tx, {
+			id: crypto.randomUUID(),
+			targetType: 'timeline',
+			targetId: timelineId,
+			assigneeId: input.assigneeId,
+			assignedAt: now,
 		});
 
 		return { ok: true, timelineId };

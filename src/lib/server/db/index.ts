@@ -3,7 +3,12 @@ import { drizzle as drizzleLibsql, type LibSQLDatabase } from 'drizzle-orm/libsq
 import { drizzle as drizzleD1, type DrizzleD1Database } from 'drizzle-orm/d1';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import * as schema from './schema';
-import { ensureEventAppendOnlyTriggers } from './bootstrap';
+import {
+	ensureEventAppendOnlyTriggers,
+	ensureGateEvidenceAppendOnlyTriggers,
+	ensureSealAppendOnlyTriggers,
+	ensureVersionAppendOnlyTriggers,
+} from './bootstrap';
 
 export type Db = LibSQLDatabase<typeof schema> | DrizzleD1Database<typeof schema>;
 /**
@@ -22,7 +27,31 @@ export type SqliteDb = LibSQLDatabase<typeof schema>;
 export type SqliteQueryable = BaseSQLiteDatabase<'async', unknown, typeof schema>;
 
 let sqliteDb: SqliteDb | undefined;
-let bootstrapped = false;
+let bootstrapPromise: Promise<void> | undefined;
+
+/**
+ * 初回リクエストだけで走る追記専用トリガーの確認を共有する。
+ * 以前はcold startの最初の画面表示で8本のDDLを直列実行し、同時アクセスでは同じ確認まで
+ * 重複していた。各トリガー群は独立・冪等なので並列化し、進行中のPromiseを共有する。
+ */
+async function ensureBootstrap(db: SqliteDb): Promise<void> {
+	if (!bootstrapPromise) {
+		bootstrapPromise = Promise.all([
+			ensureEventAppendOnlyTriggers(db),
+			ensureVersionAppendOnlyTriggers(db),
+			ensureSealAppendOnlyTriggers(db),
+			ensureGateEvidenceAppendOnlyTriggers(db),
+		]).then(() => undefined);
+	}
+
+	try {
+		await bootstrapPromise;
+	} catch (error) {
+		// 一時的なI/O失敗を恒久的にキャッシュせず、次のアクセスで再試行可能にする。
+		bootstrapPromise = undefined;
+		throw error;
+	}
+}
 
 /**
  * `platform.env.DB`（Cloudflare Workers上のD1バインディング）があればD1を使い、
@@ -38,9 +67,6 @@ export async function getDb(platform?: App.Platform): Promise<Db> {
 		const client = createClient({ url: `file:${path}` });
 		sqliteDb = drizzleLibsql(client, { schema });
 	}
-	if (!bootstrapped) {
-		await ensureEventAppendOnlyTriggers(sqliteDb);
-		bootstrapped = true;
-	}
+	await ensureBootstrap(sqliteDb);
 	return sqliteDb;
 }

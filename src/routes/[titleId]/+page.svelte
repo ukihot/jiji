@@ -1,47 +1,62 @@
 <script lang="ts">
-	import { AlertTriangle, ArrowLeft, Calendar, Plus, Users } from 'lucide-svelte';
+	import Calendar from '@lucide/svelte/icons/calendar';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Settings from '@lucide/svelte/icons/settings';
+	import * as m from '$lib/paraglide/messages';
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
+	import Button from '$lib/components/Button.svelte';
+	import ErrorNotice from '$lib/components/ErrorNotice.svelte';
+	import FormField from '$lib/components/FormField.svelte';
+	import FormInput from '$lib/components/FormInput.svelte';
+	import ArtistPicker from '$lib/components/ArtistPicker.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	const addTimelineOpen = $derived(data.timelines.length === 0 || !!form?.message);
+	let artistId = $state<string | null>(null);
 </script>
 
-<p>
-	<a
-		href="/"
-		class="text-primary flex w-fit items-center gap-1 text-sm no-underline hover:underline"
-	>
-		<ArrowLeft size={14} aria-hidden="true" />
-		作品一覧
-	</a>
-</p>
-<h1 class="text-foreground mt-2 text-2xl font-bold">{data.title.name}</h1>
+<Breadcrumb items={[{ label: m.nav_back_to_titles(), href: '/' }, { label: data.title.name }]} />
 
-{#if data.canManage}
-	<p class="mt-2">
-		<a
-			href="/{data.title.id}/members"
-			class="text-primary flex w-fit items-center gap-1.5 text-sm no-underline hover:underline"
-		>
-			<Users size={16} aria-hidden="true" />
-			メンバー管理
-		</a>
-	</p>
+<PageHeader title={data.title.name}>
+	{#snippet actions()}
+		{#if data.canManage}
+			<a
+				href="/{data.title.id}/settings"
+				class="border-border text-foreground hover:bg-surface flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm no-underline"
+			>
+				<Settings size={16} aria-hidden="true" />
+				{m.project_settings_link()}
+			</a>
+		{/if}
+	{/snippet}
+</PageHeader>
+
+{#if form?.message}
+	<ErrorNotice message={form.message} class="mt-4" />
 {/if}
 
-<section class="mt-8">
-	<h2 class="text-foreground mb-3 text-lg font-semibold">話数一覧</h2>
+<section class="mt-6" aria-label={m.timelines_heading()}>
 	{#if data.timelines.length === 0}
-		<p class="text-muted text-sm">まだ話数がありません。</p>
+		<p class="text-muted text-sm">{m.timelines_empty()}</p>
 	{:else}
-		<ul class="divide-border border-border bg-surface divide-y overflow-hidden rounded-lg border">
+		<!--
+			話数が増えるほど「1話数=1行の縦リスト」は目的の話数を探すのに何度もスクロールさせる。
+			幅の余ったシステムらしいレイアウトを活かし、一覧性の高いカードグリッドにする。
+		-->
+		<ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
 			{#each data.timelines as timeline (timeline.id)}
 				<li>
 					<a
 						href="/{data.title.id}/{timeline.id}"
-						class="text-foreground hover:bg-background flex items-center gap-2 px-4 py-3 no-underline"
+						class="border-border bg-surface hover:border-primary text-foreground flex flex-col items-center gap-1.5 rounded-lg border px-3 py-4 text-center no-underline transition"
 					>
-						<Calendar size={16} class="text-muted" aria-hidden="true" />
-						{timeline.season} 第{timeline.episode}話
+						<Calendar size={18} class="text-muted" aria-hidden="true" />
+						<span class="text-sm font-medium"
+							>{m.episode_label({ season: timeline.season, episode: timeline.episode })}</span
+						>
 					</a>
 				</li>
 			{/each}
@@ -50,42 +65,29 @@
 </section>
 
 {#if data.canManage}
-	<section class="mt-8">
-		<h2 class="text-foreground mb-3 text-lg font-semibold">話数を追加</h2>
-		{#if form?.message}
-			<p class="text-danger mb-3 flex items-center gap-1.5 text-sm">
-				<AlertTriangle size={16} aria-hidden="true" />
-				{form.message}
-			</p>
-		{/if}
-		<form method="POST" action="?/createTimeline" class="flex flex-wrap items-end gap-2">
-			<label class="text-muted flex flex-col gap-1 text-sm">
-				期
-				<input
-					type="text"
-					name="season"
-					placeholder="1期"
-					required
-					class="border-border bg-background text-foreground focus:border-primary focus:ring-primary rounded-md px-2 py-1.5 text-sm"
-				/>
-			</label>
-			<label class="text-muted flex flex-col gap-1 text-sm">
-				話数
-				<input
-					type="number"
-					name="episode"
-					min="1"
-					required
-					class="border-border bg-background text-foreground focus:border-primary focus:ring-primary w-24 rounded-md px-2 py-1.5 text-sm"
-				/>
-			</label>
-			<button
-				type="submit"
-				class="bg-primary text-primary-foreground flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium hover:opacity-90"
-			>
-				<Plus size={16} aria-hidden="true" />
-				追加
-			</button>
-		</form>
-	</section>
+	<details class="border-border bg-surface mt-6 rounded-lg border" open={addTimelineOpen}>
+		<summary
+			class="text-foreground flex cursor-pointer list-none items-center gap-1.5 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden"
+		>
+			<Plus size={16} aria-hidden="true" />
+			{m.add_timeline_heading()}
+		</summary>
+		<div class="border-border border-t p-4">
+			<form method="POST" action="?/createTimeline" class="flex flex-wrap items-end gap-2">
+				<FormField label={m.label_season()}>
+					<FormInput type="text" name="season" placeholder={m.placeholder_season()} required />
+				</FormField>
+				<FormField label={m.label_episode()}>
+					<FormInput type="number" name="episode" min="1" required class="w-24" />
+				</FormField>
+				<FormField label={m.label_artist()}>
+					<ArtistPicker artists={data.assignablePersons} bind:selectedId={artistId} />
+				</FormField>
+				<Button type="submit">
+					<Plus size={16} aria-hidden="true" />
+					{m.action_add()}
+				</Button>
+			</form>
+		</div>
+	</details>
 {/if}

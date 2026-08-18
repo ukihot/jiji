@@ -115,3 +115,18 @@ export async function getEventsByTarget(
 		createdAt: row.createdAt,
 	}));
 }
+
+/** 監査画面用。対象を横断して最新のイベントを取得する（eventは追記専用）。 */
+export async function listRecentEvents(db: SqliteQueryable, limit = 200): Promise<AppendedEvent[]> {
+	const rows = await db.select().from(eventTable).orderBy(desc(eventTable.createdAt)).limit(limit);
+	return rows.map((row) => ({
+		id: row.id,
+		targetType: row.targetType,
+		targetId: row.targetId,
+		type: row.type,
+		payload: row.payload,
+		prevHash: row.prevHash,
+		hash: row.hash,
+		createdAt: row.createdAt,
+	}));
+}

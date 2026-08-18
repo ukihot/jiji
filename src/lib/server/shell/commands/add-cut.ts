@@ -8,6 +8,7 @@ import { projectTimelineBandView } from '$lib/core/projections/timeline-band-vie
 import type { SqliteDb } from '../../db';
 import { appendEvent, getEventsByTarget } from '../repository/event-repository';
 import { insertCut, listCutsByTimeline, replaceBandView } from '../repository/timeline-repository';
+import { replaceWorkAssignment } from '../repository/work-assignment-repository';
 
 export interface AddCutInput {
 	timelineId: string;
@@ -15,6 +16,7 @@ export interface AddCutInput {
 	sortOrder: number;
 	plannedFrames: number;
 	sceneTags: string[];
+	assigneeId: string;
 }
 
 export type AddCutResult = { ok: true; cutId: string } | { ok: false; error: TimelineError };
@@ -51,6 +53,13 @@ export async function addCut(db: SqliteDb, input: AddCutInput): Promise<AddCutRe
 			sortOrder: input.sortOrder,
 			plannedFrames: input.plannedFrames,
 			sceneTags: input.sceneTags,
+		});
+		await replaceWorkAssignment(tx, {
+			id: crypto.randomUUID(),
+			targetType: 'cut',
+			targetId: cutId,
+			assigneeId: input.assigneeId,
+			assignedAt: now,
 		});
 
 		// design.md 2.3節/4.1節: 同一トランザクションでtimeline_band_view投影を更新する

@@ -1,4 +1,5 @@
 import { asc, eq } from 'drizzle-orm';
+import type { WorkspaceRole } from '$lib/core/workspace-role';
 import type { SqliteQueryable } from '../../db';
 import { person } from '../../db/schema';
 
@@ -8,6 +9,7 @@ export interface PersonRow {
 	/** design.md 8.5.2節: Magic Identity経由のexternalはメール無しで作成される */
 	email: string | null;
 	accountType: 'internal' | 'external';
+	workspaceRole: WorkspaceRole | null;
 }
 
 export async function getPerson(db: SqliteQueryable, personId: string): Promise<PersonRow | null> {
@@ -30,4 +32,12 @@ export async function listInternalPersons(db: SqliteQueryable): Promise<PersonRo
 
 export async function insertPerson(db: SqliteQueryable, row: PersonRow): Promise<void> {
 	await db.insert(person).values(row);
+}
+
+export async function updateWorkspaceRole(
+	db: SqliteQueryable,
+	personId: string,
+	workspaceRole: WorkspaceRole,
+): Promise<void> {
+	await db.update(person).set({ workspaceRole }).where(eq(person.id, personId));
 }

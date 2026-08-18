@@ -1,10 +1,9 @@
 <script lang="ts">
-	import type { Pathname } from '$app/types';
-	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
-	import { locales, localizeHref } from '$lib/paraglide/runtime';
-	import { Film, LogIn, User } from 'lucide-svelte';
-	import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
+	import * as m from '$lib/paraglide/messages';
+	import Film from '@lucide/svelte/icons/film';
+	import LogIn from '@lucide/svelte/icons/log-in';
+	import ModeToggle from '$lib/components/ModeToggle.svelte';
+	import UserMenu from '$lib/components/UserMenu.svelte';
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 
@@ -13,39 +12,51 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
-<div class="mx-auto flex min-h-screen max-w-4xl flex-col px-4 sm:px-6">
-	<header class="border-border flex items-center justify-between border-b py-4">
-		<a href="/" class="text-foreground flex items-center gap-2 font-semibold no-underline">
-			<Film size={20} class="text-primary" aria-hidden="true" />
-			Jiji
-		</a>
-
-		<div class="flex items-center gap-4">
-			{#if data.currentPerson}
-				<span class="text-muted flex items-center gap-1.5 text-sm">
-					<User size={16} aria-hidden="true" />
-					{data.currentPerson.name}
-				</span>
-			{:else}
-				<a
-					href="/dev-login"
-					class="text-primary flex items-center gap-1.5 text-sm no-underline hover:underline"
+<div class="bg-background flex min-h-screen flex-col">
+	<!--
+		基幹システムらしい「常に居場所と自分・見た目操作にアクセスできるツールバー」。
+		以前はページ本文と同じ細い列に収まる、ブログのようなヘッダーだった。
+		ここは sticky にして、縦に長いページ（カット詳細など）をスクロールしても
+		ユーザーメニューやテーマ切り替えに手が届く状態を保つ。
+	-->
+	<header class="border-border/80 bg-surface/88 sticky top-0 z-20 border-b backdrop-blur-xl">
+		<div
+			class="mx-auto flex h-14 max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8"
+		>
+			<a href="/" class="text-foreground flex items-center gap-3 font-semibold no-underline">
+				<span
+					class="bg-primary text-primary-foreground flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
 				>
-					<LogIn size={16} aria-hidden="true" />
-					ログイン
-				</a>
-			{/if}
-			<ThemeSwitcher theme={data.theme} mode={data.mode} />
+					<Film size={16} aria-hidden="true" />
+				</span>
+				<span class="flex items-baseline gap-2 tracking-tight">
+					<span>Jiji</span>
+					<span
+						class="text-muted hidden text-[10px] font-medium tracking-[0.18em] uppercase sm:inline"
+						>production</span
+					>
+				</span>
+			</a>
+
+			<div class="flex items-center gap-3">
+				{#if data.currentPerson}
+					<UserMenu person={data.currentPerson} />
+				{:else}
+					<a
+						href="/dev-login"
+						class="text-primary flex items-center gap-1.5 text-sm no-underline hover:underline"
+					>
+						<LogIn size={16} aria-hidden="true" />
+						{m.nav_login()}
+					</a>
+				{/if}
+				<span class="bg-border h-5 w-px" aria-hidden="true"></span>
+				<ModeToggle mode={data.mode} />
+			</div>
 		</div>
 	</header>
 
-	<main class="flex-1 py-6">
+	<main class="mx-auto w-full max-w-[1600px] flex-1 px-4 py-8 sm:px-6 lg:px-8">
 		{@render children()}
 	</main>
-</div>
-
-<div style="display:none">
-	{#each locales as locale (locale)}
-		<a href={resolve(localizeHref(page.url.pathname, { locale }) as Pathname)}>{locale}</a>
-	{/each}
 </div>

@@ -38,6 +38,7 @@ const producer = must(
 		email: 'yamada@example.com',
 		accountType: 'internal',
 		workspaceRole: 'owner',
+		relayEnabled: true,
 	}),
 	'制作進行「山田太郎」を登録',
 );
@@ -49,6 +50,7 @@ const director = must(
 		email: 'suzuki@example.com',
 		accountType: 'internal',
 		workspaceRole: 'member',
+		relayEnabled: false,
 	}),
 	'監督「鈴木花子」を登録',
 );

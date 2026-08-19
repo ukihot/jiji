@@ -14,10 +14,10 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ burndownStyle: rough ? 'rough' : 'standard' }),
 		});
-		// +layout.server.tsのloadはparams/url/fetch/parent()を参照しないため、
-		// クライアントナビゲーションでは再実行されない（SvelteKitの既定のload再検証条件に
-		// 引っかからない）。Cookie保存後にinvalidateAllしないと、このコンポーネントが
-		// 次に/settingsへ来てマウントし直されたときstyleが古いまま渡り、常にOFFに見えてしまう。
+		// +layout.server.ts の load は params / url / fetch / parent() を参照しないため、
+		// SvelteKit の既定の再検証条件ではクライアントナビゲーション時に再実行されない。
+		// Cookie 保存後に invalidateAll しないと、次回 /settings を開いた際にも
+		// 古い style が渡され、常に OFF に見えてしまう。
 		await invalidateAll();
 	}
 </script>

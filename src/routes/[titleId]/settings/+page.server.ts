@@ -18,6 +18,15 @@ import {
 	listProcessNodes,
 } from '$lib/server/shell/repository/production-repository';
 import { getTitle } from '$lib/server/shell/repository/timeline-repository';
+import { configureRelayStorage } from '$lib/server/shell/commands/configure-relay-storage';
+import { setRelayStorageCredentials } from '$lib/server/shell/commands/set-relay-storage-credentials';
+import { isRelayStorageProvider } from '$lib/core/relay';
+import {
+	countPendingRelayJobs,
+	listRelayRegistrations,
+	listRelayStorageConnections,
+} from '$lib/server/shell/repository/relay-repository';
+import { deriveRelayStatus } from '$lib/core/relay';
 
 /**
  * design.md 12章/8.6節: 「メニューや管理画面は作品の裏側に置く」。メンバー管理・Representation設定など
@@ -33,10 +42,20 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		error(403, m.error_settings_page_admin_required());
 	}
 
-	const [configured, blueprint, terms] = await Promise.all([
+	const [
+		configured,
+		blueprint,
+		terms,
+		relayStorageConnections,
+		relayRegistrations,
+		pendingRelayJobs,
+	] = await Promise.all([
 		listEnabledRepresentationTypes(locals.db, params.titleId),
 		getPublishedBlueprint(locals.db, params.titleId),
 		listActiveStudioTerms(locals.db, params.titleId),
+		listRelayStorageConnections(locals.db, params.titleId),
+		listRelayRegistrations(locals.db, params.titleId),
+		countPendingRelayJobs(locals.db, params.titleId),
 	]);
 	const enabledTypes = applyRepresentationTypesDefault(configured);
 	const nodes = blueprint ? await listProcessNodes(locals.db, blueprint.id) : [];
@@ -54,6 +73,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		blueprint: blueprint ? { ...blueprint, nodes } : null,
 		structureMap,
 		terms,
+		relayStorageConnections,
+		relayRegistrations: relayRegistrations.map((relay) => ({
+			...relay,
+			status: deriveRelayStatus({
+				lastHeartbeatAt: relay.lastHeartbeatAt,
+				writable: relay.writable,
+				now: new Date(),
+			}),
+		})),
+		pendingRelayJobs,
 	};
 };
 
@@ -109,5 +138,72 @@ export const actions: Actions = {
 		});
 		if (!result.ok) return fail(400, { message: m.error_invalid_request() });
 		return { success: true };
+	},
+
+	configureRelayStorage: async ({ request, params, locals }) => {
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageProduction')) {
+			return fail(403, { message: m.error_no_permission() });
+		}
+		const formData = await request.formData();
+		const provider = formData.get('provider');
+		const bucketOrContainer = formData.get('bucketOrContainer');
+		const endpoint = formData.get('endpoint');
+		const region = formData.get('region');
+		const prefix = formData.get('prefix');
+		const authRef = formData.get('authRef');
+		if (
+			!isRelayStorageProvider(provider) ||
+			typeof bucketOrContainer !== 'string' ||
+			typeof endpoint !== 'string' ||
+			typeof region !== 'string' ||
+			typeof prefix !== 'string' ||
+			typeof authRef !== 'string'
+		) {
+			return fail(400, { message: m.error_invalid_request() });
+		}
+		const accessKeyIdRaw = formData.get('accessKeyId');
+		const secretAccessKeyRaw = formData.get('secretAccessKey');
+		const result = await configureRelayStorage(locals.db, {
+			titleId: params.titleId,
+			provider,
+			bucketOrContainer,
+			endpoint,
+			region,
+			prefix,
+			authRef,
+			accessKeyId: typeof accessKeyIdRaw === 'string' ? accessKeyIdRaw : null,
+			secretAccessKey: typeof secretAccessKeyRaw === 'string' ? secretAccessKeyRaw : null,
+			configuredBy: locals.currentPerson.id,
+		});
+		if (!result.ok) return fail(400, { message: `Relayストレージ設定エラー: ${result.error}` });
+		return { relayStorageConnection: result.connection.id };
+	},
+
+	setRelayStorageCredentials: async ({ request, params, locals }) => {
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageProduction')) {
+			return fail(403, { message: m.error_no_permission() });
+		}
+		const formData = await request.formData();
+		const connectionId = formData.get('connectionId');
+		const accessKeyId = formData.get('accessKeyId');
+		const secretAccessKey = formData.get('secretAccessKey');
+		if (
+			typeof connectionId !== 'string' ||
+			typeof accessKeyId !== 'string' ||
+			typeof secretAccessKey !== 'string'
+		) {
+			return fail(400, { message: m.error_invalid_request() });
+		}
+		const result = await setRelayStorageCredentials(locals.db, {
+			connectionId,
+			titleId: params.titleId,
+			accessKeyId,
+			secretAccessKey,
+			updatedBy: locals.currentPerson.id,
+		});
+		if (!result.ok) return fail(400, { message: `資格情報の設定エラー: ${result.error}` });
+		return { relayStorageCredentialsUpdated: connectionId };
 	},
 };

@@ -35,6 +35,7 @@ export async function createPerson(
 		email: input.email,
 		accountType: input.accountType,
 		workspaceRole: input.workspaceRole ?? (input.accountType === 'internal' ? 'member' : null),
+		relayEnabled: false,
 	});
 	return { ok: true, personId };
 }

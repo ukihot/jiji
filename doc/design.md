@@ -1,6 +1,6 @@
-# 作品管理ツール「Jiji」設計書 v0.5
+# 作品管理ツール「Jiji」設計書 v0.8
 
-**対応要件定義: doc/requirements.md v0.4**
+**対応要件定義: doc/requirements.md v0.6**
 
 ---
 
@@ -34,22 +34,26 @@
                          └───────┬───────────┬──────────┘
                                  │           │
                      ┌───────────▼───┐   ┌───▼─────────────────┐
-                     │ SQLite / D1    │   │ 既存ストレージ         │
-                     │ (Drizzle経由)  │   │ NAS / S3互換 / Local  │
-                     │ メタデータ      │   │ 原本ファイル（寄生先） │
-                     │ イベントログ    │   └──────────────────────┘
-                     │ プロキシ参照    │
-                     └────────────────┘
+                     │ SQLite / D1    │   │ 組織指定Object Storage  │
+                     │ (Drizzle経由)  │   │ 転送待ち成果物          │
+                     │ メタデータ      │   └──────────┬───────────┘
+                     │ イベントログ    │              │ HTTPS
+                     │ プロキシ参照    │   ┌──────────▼───────────┐
+                     └────────────────┘   │ 社内Relay Browser       │
+                                            │ Directory Handleで社内共有フォルダへ │
+                                            └──────────┬───────────┘
+                                                       ▼
+                                                既存の社内共有フォルダ / Local
 ```
 
 Jijiは単一のSvelteKitアプリケーションであり、フロントエンドとバックエンドを分離しない。「バックエンド」はSvelteKitのサーバーサイド（`+page.server.ts` / `+server.ts` / `lib/server/**`）として実装する。
 
 ## 1.1 配布形態は2パターン
 
-| モード | 用途 | DB | 実行方法 |
-|---|---|---|---|
-| **セルフホスト（既定）** | エアギャップ環境、スタジオのローカルマシン | SQLite（ファイル1個） | `bun build --compile` で単一実行ファイル化。ffmpegはサブプロセスとして同居 |
-| **ホスティングSaaS（将来・任意）** | 要件書10.1/ライセンス節にある有償ホスティング案 | Cloudflare D1 | SvelteKit adapter-cloudflare。Workers上で実行 |
+| モード                             | 用途                                            | DB                    | 実行方法                                                                   |
+| ---------------------------------- | ----------------------------------------------- | --------------------- | -------------------------------------------------------------------------- |
+| **セルフホスト（既定）**           | エアギャップ環境、スタジオのローカルマシン      | SQLite（ファイル1個） | `bun build --compile` で単一実行ファイル化。ffmpegはサブプロセスとして同居 |
+| **ホスティングSaaS（将来・任意）** | 要件書10.1/ライセンス節にある有償ホスティング案 | Cloudflare D1         | SvelteKit adapter-cloudflare。Workers上で実行                              |
 
 DrizzleでSQLite/D1を抽象化しているのは、この2モードをスキーマ・クエリコード無変更で両立させるため。
 
@@ -61,18 +65,18 @@ DrizzleでSQLite/D1を抽象化しているのは、この2モードをスキー
 
 ### 採用理由
 
-| 観点 | 理由 |
-|---|---|
-| エアギャップ要件（N-01/N-02） | プロセスが1つなので「外部通信ゼロ」の監査対象が単純になる。フロント⇄API間のネットワーク境界が存在しないため、そこを流れる通信自体を心配する必要がない |
-| シングルバイナリ配布（N-13/N-14） | `bun build --compile`で固める対象が1プロセスで済む。APIサーバとフロントを別々にビルド・同梱・プロセス管理する必要がない |
-| 監査ログの整合性 | Jijiの核心（P-03/P-04: イベントは追記専用ですべて記録される）を支えるには、DBへの書き込み経路がShellのコマンドハンドラ1箇所に絞られている方が、抜け道が構造的に作りにくい。サービスを分割すると書き込み経路が増え、イベント化されない変更が紛れ込むリスクが上がる |
-| 型の一気通貫 | Drizzleのスキーマ型がserver loadの返り値型、Svelteコンポーネントのpropsまで繋がる。API契約（DTO / OpenAPI）を別途手で維持するコストが要らない |
+| 観点                              | 理由                                                                                                                                                                                                                                                              |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| エアギャップ要件（N-01/N-02）     | プロセスが1つなので「外部通信ゼロ」の監査対象が単純になる。フロント⇄API間のネットワーク境界が存在しないため、そこを流れる通信自体を心配する必要がない                                                                                                             |
+| シングルバイナリ配布（N-13/N-14） | `bun build --compile`で固める対象が1プロセスで済む。APIサーバとフロントを別々にビルド・同梱・プロセス管理する必要がない                                                                                                                                           |
+| 監査ログの整合性                  | Jijiの核心（P-03/P-04: イベントは追記専用ですべて記録される）を支えるには、DBへの書き込み経路がShellのコマンドハンドラ1箇所に絞られている方が、抜け道が構造的に作りにくい。サービスを分割すると書き込み経路が増え、イベント化されない変更が紛れ込むリスクが上がる |
+| 型の一気通貫                      | Drizzleのスキーマ型がserver loadの返り値型、Svelteコンポーネントのpropsまで繋がる。API契約（DTO / OpenAPI）を別途手で維持するコストが要らない                                                                                                                     |
 
 ### この構成でも崩さない点（注意）
 
-* **層の分離は引き続き必要**：「APIサーバが無い」ことと「ドメインロジックをルートハンドラに直書きしていい」ことは別の話。3章のとおりFunctional Core / Imperative Shellで層を分ける規律を維持する
-* **将来の外部連携**（F-51タイムシート連携、F-52 AE連携、F-53 DCC連携）には安定した公開API契約が要る。`+server.ts`を公開エンドポイントとして使えば実現自体は詰まないが、セッションCookie前提の内部向けエンドポイントと、トークン認証の外部向けエンドポイントは意図的に分けて設計する必要がある
-* **メディア処理のスケール**：ffmpegの負荷が増した場合は6章のとおりバックグラウンドジョブとして切り離す。これは「APIサーバを分けるか」とは独立した論点であり、一体型アーキテクチャを選んだこと自体の障害にはならない
+- **層の分離は引き続き必要**：「APIサーバが無い」ことと「ドメインロジックをルートハンドラに直書きしていい」ことは別の話。3章のとおりFunctional Core / Imperative Shellで層を分ける規律を維持する
+- **将来の外部連携**（F-51タイムシート連携、F-52 AE連携、F-53 DCC連携）には安定した公開API契約が要る。`+server.ts`を公開エンドポイントとして使えば実現自体は詰まないが、セッションCookie前提の内部向けエンドポイントと、トークン認証の外部向けエンドポイントは意図的に分けて設計する必要がある
+- **メディア処理のスケール**：ffmpegの負荷が増した場合は6章のとおりバックグラウンドジョブとして切り離す。これは「APIサーバを分けるか」とは独立した論点であり、一体型アーキテクチャを選んだこと自体の障害にはならない
 
 ## 1.3 デプロイ先はCloudflare Workers（Pagesではない）
 
@@ -84,8 +88,8 @@ Cloudflare公式のSvelteKitフレームワークガイドはworkers/framework-g
 
 参考:
 
-* https://developers.cloudflare.com/workers/framework-guides/web-apps/sveltekit/
-* https://svelte.dev/docs/kit/adapter-cloudflare
+- https://developers.cloudflare.com/workers/framework-guides/web-apps/sveltekit/
+- https://svelte.dev/docs/kit/adapter-cloudflare
 
 ---
 
@@ -97,10 +101,10 @@ Jijiの状態はもともとイベント履歴から導出される設計（要�
 
 ## 2.1 CoreとShellの境界
 
-| 区分 | 定義 | 含むもの |
-|---|---|---|
-| **Core**（`lib/core/**`） | 純粋関数のみ。DB・現在時刻・乱数・ネットワーク・ffmpegを一切呼ばない。同じ入力からは常に同じ出力になる | 意思決定関数（decide）、状態畳み込み関数（evolve）、投影関数（project）、ハッシュチェーン計算 |
-| **Shell**（`lib/server/shell/**`） | すべての副作用を担う | コマンドハンドラ、クエリハンドラ、リポジトリ（Drizzle）、メディア処理、認証 |
+| 区分                               | 定義                                                                                                   | 含むもの                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| **Core**（`lib/core/**`）          | 純粋関数のみ。DB・現在時刻・乱数・ネットワーク・ffmpegを一切呼ばない。同じ入力からは常に同じ出力になる | 意思決定関数（decide）、状態畳み込み関数（evolve）、投影関数（project）、ハッシュチェーン計算 |
+| **Shell**（`lib/server/shell/**`） | すべての副作用を担う                                                                                   | コマンドハンドラ、クエリハンドラ、リポジトリ（Drizzle）、メディア処理、認証                   |
 
 判定基準：**現在時刻・乱数・DB・ネットワークに一切触れずにVitestで即テストできる関数はCore、そうでなければShell。** 時刻やIDが要る場合はCoreの引数として渡し、生成自体はShellが行う。
 
@@ -174,7 +178,7 @@ src/
         index.ts                   … DB接続（SQLite/D1切替）
       media/
         proxy.ts                   … ffmpeg起動・プロキシ生成キュー
-        storage-ref.ts             … NAS/S3互換/ローカル参照アダプタ
+        storage-ref.ts             … 社内共有フォルダ/S3互換/ローカル参照アダプタ
       auth/
         internal.ts                … ID/PW + TOTP。ログイン時だけでなくリクエスト毎にmembership有効性を再検証
         share-token.ts             … 署名付きURL発行・検証
@@ -188,33 +192,33 @@ src/
 
 要件定義6章のドメインモデルを物理テーブルに落とす。以下はテーブル設計の骨子（Drizzleスキーマの詳細な型は実装時に確定）。
 
-| テーブル | 主なカラム | 設計上の注意 |
-|---|---|---|
-| `timeline` | id, title_id, season, episode | 話数単位で1レコード |
-| `timeline_item` | id, timeline_id, type(cut/audio/transition/marker), label(text), sort_order(int), width_frames(int, markerは0/NULL可) | Timeline上に並ぶ要素の共通台帳。**Cutを含むすべての要素種別がこの1テーブルに乗る**（4.0.1節）。number/尺の表示順はここで一元管理する |
-| `cut` | id(=timeline_item.id), scene_tags(json) | idは独自採番せず`timeline_item.id`をそのままPK/FKとして共有する（クラステーブル継承）。number・sort_order・尺は`timeline_item`側に統合済みのため、Cut固有の属性（シーン分類）のみを持つ |
-| `representation` | id, cut_id, type(storyboard/animatic/layout/animation/bg/cg_render/composite/final), sort_order(int) | Cutが工程を経て取る表現形態（要件定義4.4節・6.1節）。1 Cutにつき同じtypeは1件（UNIQUE制約）。typeのカタログ自体は固定enumのまま（7章の工程DAGと同様、任意の名前をユーザーが自由追加できる項目にはしない）だが、このカタログのうちどれをそのTitleで使うかはプロジェクト単位で選べる（`title_representation_type`参照、4.0.2節改訂） |
-| `title_representation_type` | title_id, type | そのTitleで有効なRepresentation種別の**互換投影**（存在＝有効。複合PK）。Production Kernel導入後の正本は最新の公開`production_blueprint`であり、本表はそこから再構築する。Blueprint未導入のTitleだけは「未設定」＝全種類有効の既定を維持する |
-| `production_blueprint` | id, title_id, version, status(draft/published/retired), based_on_blueprint_id(nullable), published_at | 作品別工程テンプレートの不変スナップショット。編集中の下書きを既存カットへ直接反映しない。公開時に新しいversionを作り、以降のカットだけが既定として参照する（11.3節） |
-| `process_node` | id, blueprint_id, capability_key, representation_type(nullable), kind(deliverable/review/milestone), required(bool), sort_hint | 作品内の工程ノード。`capability_key`は標準意味、表示名は`studio_term`で解決する。ユーザー任意のスクリプトは持たせない（11.2節） |
-| `process_edge` | blueprint_id, from_node_id, to_node_id, relation(requires/informs/feeds), latency_policy | 有向非巡回グラフ。`requires`のみが締切・ゲートをブロックし、`informs`は影響通知だけを生む。これにより創作上の参考関係を納期依存と混同しない（11.3節） |
-| `studio_term` | id, title_id, capability_key, display_name, aliases(json), usage_note, active_from_event_id, retired_at_event_id(nullable) | スタジオ固有の呼称を標準意味へ対応づける辞書。表示名変更後も過去イベントの当時の呼称を再現できる（11.2節） |
-| `review_gate` | id, process_node_id, gate_key, required_evidence(json), reviewer_policy(json), deadline_policy(json) | 「何を、誰が、どの版で確認すべきか」を定義する。通過状態は保持せず、GateEvidenceイベントから導出する（11.4節） |
-| `decision_capsule` | id, title_id, scope_type, scope_id, decision_key, decision_text, status(open/confirmed/superseded), confirmed_by, confirmed_at | 尺・カメラ・演出・ルック等、早期に確定させる意図の単位。根拠となるVersionと有効範囲を別表で持つ（11.5節） |
-| `decision_evidence` | capsule_id, version_id, coverage(json), role(reference/approval/test) | 意図を支える中間成果物と、どのカット／尺／表現要素をカバーするかの対応。版ハッシュで固定する |
-| `dependency_link` | from_target_type, from_target_id, to_target_type, to_target_id, relation(derived_from/uses/depends_on), source_event_id | Versionの派生、Asset利用、工程依存を同じ問い合わせ可能な辺へ正規化した読み取り用リンク。正本は個別イベント／Version FKである（11.6節） |
-| `work_assignment` | id, target_type(title/timeline/cut/representation/process_node), target_id, assignee_id, assigned_at | テキストの独立タスクではなく、制作対象にアーティストを結びつける割当。表示上の「自分のタスク」はこの割当とReadiness投影から導出する（11.8節） |
-| `asset` | id, title_id, type, name | |
-| `cut_asset` | cut_id, asset_id, used_version_id | 多対多の中間テーブル。使用版を記録。cut_idは`cut.id`（=`timeline_item.id`）を指すため、この節の変更による波及なし |
-| `submission` | id, cut_id or asset_id, representation_id(nullable, FK→representation), process_step, submitted_by, submitted_at | representation_idはcut向け提出では必須、asset向け提出（7章のAsset DAG：モデリング/リグ/ルックデブ）ではNULL——AssetはRepresentationを持たない（4.0.2節） |
-| `version` | id, submission_id, seq(int, 自動採番), file_ref, proxy_ref, artifact_metadata(json, nullable), derived_from_version_id(nullable, 自己参照FK), derived_from_relation(refined/converted/replaced, nullable), created_at | **UPDATE禁止・INSERTのみ**。上書きはアプリ層でも禁止する。artifact_metadataはEXR AOV/PSDレイヤー/PNGアルファ有無等、成果物形式ごとの内部構造を記録するのみで、プロキシ生成やRepresentation分割の対象にはしない（4.0.2節、F-25）。derived_from_*は「このVersionはどのVersionから作られたか」という制作上の因果関係（別Representationの版からのこともある。例: Layout v5からAnimation v1を作画）を残す |
-| `review` | id, version_id, reviewer_id, result, comment, reviewed_at | |
-| `seal` | id, version_id, hash, sealed_by, sealed_at | 対象バージョンのハッシュを記録。封印後の再計算差分で改竄検知 |
-| `issue` | id, target_type, target_id, status(open/closed), closer_required_id, close_reason, opened_at, closed_at | 状態は2値のみ。open時にcloser必須、close時に理由必須（DB制約＋アプリ層バリデーションの二重化） |
-| `event` | id, target_type, target_id, type, payload(json), prev_hash, hash, created_at | **追記専用**。DELETE/UPDATE不可（5章参照） |
-| `share_link` | id, token_hash, target_cut_ids(json), permission_level(viewer/contributor), claimed_person_id(nullable, FK→person), expires_at(必須, NULL不可), created_by, revoked_at | 無期限を選べないようexpires_atをNOT NULLにし、アプリ層で最長90日を強制。`permission_level = contributor`は初回アクセス時にMagic Identity（8.5節）の名前入力を必須化し、生成した`person`を`claimed_person_id`に記録する |
-| `person` | id, name, email(nullable), account_type(internal/external) | account_typeでログイン方式（internal: ID/PW+TOTP／external: 8.5節のMagic Identityによるtoken認証、または長期参加ならmembership付与）を分岐。emailはMagic Identity経由のexternalではNULLのままでよい |
-| `membership` | id, person_id, scope_type(title/timeline), scope_id, permission_level(viewer/contributor/reviewer/admin), process_scope(json, NULL=全工程), granted_by, granted_at, expires_at, revoked_at, revoked_by | Googleスプレッドシートの共有を踏襲したアクセス権。expires_atはNULL可（恒常スタッフ）だが、単話参加・外部委託には運用上必須化する。閉栓権判定はpermission_level＋process_scopeで行う（8章） |
+| テーブル                    | 主なカラム                                                                                                                                                                                                            | 設計上の注意                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeline`                  | id, title_id, season, episode                                                                                                                                                                                         | 話数単位で1レコード                                                                                                                                                                                                                                                                                                                                                                                   |
+| `timeline_item`             | id, timeline_id, type(cut/audio/transition/marker), label(text), sort_order(int), width_frames(int, markerは0/NULL可)                                                                                                 | Timeline上に並ぶ要素の共通台帳。**Cutを含むすべての要素種別がこの1テーブルに乗る**（4.0.1節）。number/尺の表示順はここで一元管理する                                                                                                                                                                                                                                                                  |
+| `cut`                       | id(=timeline_item.id), scene_tags(json)                                                                                                                                                                               | idは独自採番せず`timeline_item.id`をそのままPK/FKとして共有する（クラステーブル継承）。number・sort_order・尺は`timeline_item`側に統合済みのため、Cut固有の属性（シーン分類）のみを持つ                                                                                                                                                                                                               |
+| `representation`            | id, cut_id, type(storyboard/animatic/layout/animation/bg/cg_render/composite/final), sort_order(int)                                                                                                                  | Cutが工程を経て取る表現形態（要件定義4.4節・6.1節）。1 Cutにつき同じtypeは1件（UNIQUE制約）。typeのカタログ自体は固定enumのまま（7章の工程DAGと同様、任意の名前をユーザーが自由追加できる項目にはしない）だが、このカタログのうちどれをそのTitleで使うかはプロジェクト単位で選べる（`title_representation_type`参照、4.0.2節改訂）                                                                    |
+| `title_representation_type` | title_id, type                                                                                                                                                                                                        | そのTitleで有効なRepresentation種別の**互換投影**（存在＝有効。複合PK）。Production Kernel導入後の正本は最新の公開`production_blueprint`であり、本表はそこから再構築する。Blueprint未導入のTitleだけは「未設定」＝全種類有効の既定を維持する                                                                                                                                                          |
+| `production_blueprint`      | id, title_id, version, status(draft/published/retired), based_on_blueprint_id(nullable), published_at                                                                                                                 | 作品別工程テンプレートの不変スナップショット。編集中の下書きを既存カットへ直接反映しない。公開時に新しいversionを作り、以降のカットだけが既定として参照する（11.3節）                                                                                                                                                                                                                                 |
+| `process_node`              | id, blueprint_id, capability_key, representation_type(nullable), kind(deliverable/review/milestone), required(bool), sort_hint                                                                                        | 作品内の工程ノード。`capability_key`は標準意味、表示名は`studio_term`で解決する。ユーザー任意のスクリプトは持たせない（11.2節）                                                                                                                                                                                                                                                                       |
+| `process_edge`              | blueprint_id, from_node_id, to_node_id, relation(requires/informs/feeds), latency_policy                                                                                                                              | 有向非巡回グラフ。`requires`のみが締切・ゲートをブロックし、`informs`は影響通知だけを生む。これにより創作上の参考関係を納期依存と混同しない（11.3節）                                                                                                                                                                                                                                                 |
+| `studio_term`               | id, title_id, capability_key, display_name, aliases(json), usage_note, active_from_event_id, retired_at_event_id(nullable)                                                                                            | スタジオ固有の呼称を標準意味へ対応づける辞書。表示名変更後も過去イベントの当時の呼称を再現できる（11.2節）                                                                                                                                                                                                                                                                                            |
+| `review_gate`               | id, process_node_id, gate_key, required_evidence(json), reviewer_policy(json), deadline_policy(json)                                                                                                                  | 「何を、誰が、どの版で確認すべきか」を定義する。通過状態は保持せず、GateEvidenceイベントから導出する（11.4節）                                                                                                                                                                                                                                                                                        |
+| `decision_capsule`          | id, title_id, scope_type, scope_id, decision_key, decision_text, status(open/confirmed/superseded), confirmed_by, confirmed_at                                                                                        | 尺・カメラ・演出・ルック等、早期に確定させる意図の単位。根拠となるVersionと有効範囲を別表で持つ（11.5節）                                                                                                                                                                                                                                                                                             |
+| `decision_evidence`         | capsule_id, version_id, coverage(json), role(reference/approval/test)                                                                                                                                                 | 意図を支える中間成果物と、どのカット／尺／表現要素をカバーするかの対応。版ハッシュで固定する                                                                                                                                                                                                                                                                                                          |
+| `dependency_link`           | from_target_type, from_target_id, to_target_type, to_target_id, relation(derived_from/uses/depends_on), source_event_id                                                                                               | Versionの派生、Asset利用、工程依存を同じ問い合わせ可能な辺へ正規化した読み取り用リンク。正本は個別イベント／Version FKである（11.6節）                                                                                                                                                                                                                                                                |
+| `work_assignment`           | id, target_type(title/timeline/cut/representation/process_node), target_id, assignee_id, assigned_at                                                                                                                  | テキストの独立タスクではなく、制作対象にアーティストを結びつける割当。表示上の「自分のタスク」はこの割当とReadiness投影から導出する（11.8節）                                                                                                                                                                                                                                                         |
+| `asset`                     | id, title_id, type, name                                                                                                                                                                                              |                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `cut_asset`                 | cut_id, asset_id, used_version_id                                                                                                                                                                                     | 多対多の中間テーブル。使用版を記録。cut_idは`cut.id`（=`timeline_item.id`）を指すため、この節の変更による波及なし                                                                                                                                                                                                                                                                                     |
+| `submission`                | id, cut_id or asset_id, representation_id(nullable, FK→representation), process_step, submitted_by, submitted_at                                                                                                      | representation_idはcut向け提出では必須、asset向け提出（7章のAsset DAG：モデリング/リグ/ルックデブ）ではNULL——AssetはRepresentationを持たない（4.0.2節）                                                                                                                                                                                                                                               |
+| `version`                   | id, submission_id, seq(int, 自動採番), file_ref, proxy_ref, artifact_metadata(json, nullable), derived_from_version_id(nullable, 自己参照FK), derived_from_relation(refined/converted/replaced, nullable), created_at | **UPDATE禁止・INSERTのみ**。上書きはアプリ層でも禁止する。artifact*metadataはEXR AOV/PSDレイヤー/PNGアルファ有無等、成果物形式ごとの内部構造を記録するのみで、プロキシ生成やRepresentation分割の対象にはしない（4.0.2節、F-25）。derived_from*\*は「このVersionはどのVersionから作られたか」という制作上の因果関係（別Representationの版からのこともある。例: Layout v5からAnimation v1を作画）を残す |
+| `review`                    | id, version_id, reviewer_id, result, comment, reviewed_at                                                                                                                                                             |                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `seal`                      | id, version_id, hash, sealed_by, sealed_at                                                                                                                                                                            | 対象バージョンのハッシュを記録。封印後の再計算差分で改竄検知                                                                                                                                                                                                                                                                                                                                          |
+| `issue`                     | id, target_type, target_id, status(open/closed), closer_required_id, close_reason, opened_at, closed_at                                                                                                               | 状態は2値のみ。open時にcloser必須、close時に理由必須（DB制約＋アプリ層バリデーションの二重化）                                                                                                                                                                                                                                                                                                        |
+| `event`                     | id, target_type, target_id, type, payload(json), prev_hash, hash, created_at                                                                                                                                          | **追記専用**。DELETE/UPDATE不可（5章参照）                                                                                                                                                                                                                                                                                                                                                            |
+| `share_link`                | id, token_hash, target_cut_ids(json), permission_level(viewer/contributor), claimed_person_id(nullable, FK→person), expires_at(必須, NULL不可), created_by, revoked_at                                                | 無期限を選べないようexpires_atをNOT NULLにし、アプリ層で最長90日を強制。`permission_level = contributor`は初回アクセス時にMagic Identity（8.5節）の名前入力を必須化し、生成した`person`を`claimed_person_id`に記録する                                                                                                                                                                                |
+| `person`                    | id, name, email(nullable), account_type(internal/external)                                                                                                                                                            | account_typeでログイン方式（internal: ID/PW+TOTP／external: 8.5節のMagic Identityによるtoken認証、または長期参加ならmembership付与）を分岐。emailはMagic Identity経由のexternalではNULLのままでよい                                                                                                                                                                                                   |
+| `membership`                | id, person_id, scope_type(title/timeline), scope_id, permission_level(viewer/contributor/reviewer/admin), process_scope(json, NULL=全工程), granted_by, granted_at, expires_at, revoked_at, revoked_by                | Googleスプレッドシートの共有を踏襲したアクセス権。expires_atはNULL可（恒常スタッフ）だが、単話参加・外部委託には運用上必須化する。閉栓権判定はpermission_level＋process_scopeで行う（8章）                                                                                                                                                                                                            |
 
 ```text
 Timeline ─< TimelineItem ─┬─ Cut ─┬─< CutAsset >─── Asset ─< Submission ─< Version
@@ -258,14 +262,14 @@ EXRのAOV（beauty/diffuse/specular/normal等）やPSDのレイヤー、PNGの�
 
 `event`が正本。以下は2.3節のCore `project`関数が同一トランザクションで計算・更新する読み取り専用テーブルで、画面表示はこれらだけを読む。
 
-| テーブル | 内容 | 更新元イベント |
-|---|---|---|
-| `issue_state` | issue_id, status, closer_id, opened_at, closed_at, close_reason | Issue関連イベント |
-| `representation_current_version` | representation_id, latest_version_id, approved_version_id | Version提出・Seal。「最新版」「採用版」はRepresentation単位（Storyboardの採用版とCompositeの採用版は別物。要件定義6.2節） |
-| `timeline_band_view` | episode_id, timeline_item_id, item_type, offset_frames, width_frames, process_status(json, cut以外はNULL) | TimelineItem配置イベント／Cut/Submission/Review関連イベント。process_statusはRepresentation種別をキーにしたマップ（例：`{"layout": {...}, "animation": {...}}`）。7.1節の工程バーはここから引く。7.4節のプレイヘッド同期はこの投影から現在位置直下の要素を逆引きする |
-| `membership_state` | person_id, scope_type, scope_id, permission_level, process_scope, granted_at, expires_at, revoked_at | Membership関連イベント。`is_active`は保存せず、クエリ時に現在時刻と`expires_at`/`revoked_at`を比較して算出する（8.3節） |
-| `production_readiness_view` | target_type, target_id, process_node_id, status(not_ready/ready/awaiting_review/passed/stale/waived), blocking_reasons(json), assigned_artist_id | Version、Review、GateEvidence、依存関係から導出する「次に進めるか」の投影。状態フラグを手入力しない（11.4節・11.7節） |
-| `impact_inbox_view` | change_event_id, affected_target_type, affected_target_id, severity(info/review_required/blocked), reason_code, acknowledged_at(nullable) | 変更の下流影響。イベントから再構築可能で、通知既読だけを別イベントで記録する（11.6節） |
+| テーブル                         | 内容                                                                                                                                             | 更新元イベント                                                                                                                                                                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `issue_state`                    | issue_id, status, closer_id, opened_at, closed_at, close_reason                                                                                  | Issue関連イベント                                                                                                                                                                                                                                                    |
+| `representation_current_version` | representation_id, latest_version_id, approved_version_id                                                                                        | Version提出・Seal。「最新版」「採用版」はRepresentation単位（Storyboardの採用版とCompositeの採用版は別物。要件定義6.2節）                                                                                                                                            |
+| `timeline_band_view`             | episode_id, timeline_item_id, item_type, offset_frames, width_frames, process_status(json, cut以外はNULL)                                        | TimelineItem配置イベント／Cut/Submission/Review関連イベント。process_statusはRepresentation種別をキーにしたマップ（例：`{"layout": {...}, "animation": {...}}`）。7.1節の工程バーはここから引く。7.4節のプレイヘッド同期はこの投影から現在位置直下の要素を逆引きする |
+| `membership_state`               | person_id, scope_type, scope_id, permission_level, process_scope, granted_at, expires_at, revoked_at                                             | Membership関連イベント。`is_active`は保存せず、クエリ時に現在時刻と`expires_at`/`revoked_at`を比較して算出する（8.3節）                                                                                                                                              |
+| `production_readiness_view`      | target_type, target_id, process_node_id, status(not_ready/ready/awaiting_review/passed/stale/waived), blocking_reasons(json), assigned_artist_id | Version、Review、GateEvidence、依存関係から導出する「次に進めるか」の投影。状態フラグを手入力しない（11.4節・11.7節）                                                                                                                                                |
+| `impact_inbox_view`              | change_event_id, affected_target_type, affected_target_id, severity(info/review_required/blocked), reason_code, acknowledged_at(nullable)        | 変更の下流影響。イベントから再構築可能で、通知既読だけを別イベントで記録する（11.6節）                                                                                                                                                                               |
 
 ---
 
@@ -277,10 +281,10 @@ EXRのAOV（beauty/diffuse/specular/normal等）やPSDのレイヤー、PNGの�
 event[n].hash = SHA-256( event[n-1].hash + canonical_json(event[n].payload, event[n].created_at, event[n].type) )
 ```
 
-* ハッシュ計算そのものは`lib/core/event-hash.ts`の純粋関数として実装する（2.1節）。Shellは計算結果を`event`テーブルに書き込むだけ
-* `event`テーブルへの`UPDATE`/`DELETE`はDBトリガー（SQLite）またはD1側の制約で禁止し、リポジトリ関数も`insert`しか公開しない
-* `prev_hash`はタイムライン単位（またはターゲット単位）で直前の`event.hash`を参照する
-* 監査証跡パック出力（F-36, Should）は、この列を先頭から検証してチェーンの整合性を確認したうえでPDF/CSVに変換する
+- ハッシュ計算そのものは`lib/core/event-hash.ts`の純粋関数として実装する（2.1節）。Shellは計算結果を`event`テーブルに書き込むだけ
+- `event`テーブルへの`UPDATE`/`DELETE`はDBトリガー（SQLite）またはD1側の制約で禁止し、リポジトリ関数も`insert`しか公開しない
+- `prev_hash`はタイムライン単位（またはターゲット単位）で直前の`event.hash`を参照する
+- 監査証跡パック出力（F-36, Should）は、この列を先頭から検証してチェーンの整合性を確認したうえでPDF/CSVに変換する
 
 ---
 
@@ -296,9 +300,9 @@ Submission → ffmpeg(normalize) → Proxy(cut単位)
                     変更のあった話数のみ ffmpeg(concat) → Proxy(episode単位, mp4)
 ```
 
-* ffmpeg起動はBunのサブプロセス（`Bun.spawn`）でキュー管理。同時実行数を制限する
-* 差分検知：カットの最新プロキシ生成時刻 vs 話数結合プロキシの生成時刻を比較し、古ければ再結合対象に入れる
-* 生成はバックグラウンドジョブ（要件N-19相当）。UIをブロックしない
+- ffmpeg起動はBunのサブプロセス（`Bun.spawn`）でキュー管理。同時実行数を制限する
+- 差分検知：カットの最新プロキシ生成時刻 vs 話数結合プロキシの生成時刻を比較し、古ければ再結合対象に入れる
+- 生成はバックグラウンドジョブ（要件N-19相当）。UIをブロックしない
 
 ## 6.2 将来案（segment化）
 
@@ -320,15 +324,15 @@ Timeline
 
 6.1節の「正規化プロキシ生成」は動画・静止画を前提にしていたが、Cut Lineage（要件定義4.4節）が扱う形式はそれだけではない。PSD・EXR・AEPはffmpegで直接扱えない、あるいは扱う意味が異なる（F-23）。
 
-| Representation | 入力形式 | MVPでの扱い |
-|---|---|---|
-| Storyboard | PNG / PDF | 静止画→尺分の動画化（6.1節のまま） |
-| Animatic | MP4 | 既存パイプラインでそのまま正規化 |
-| Layout / BG | PSD | レイヤーをflatten統合した1枚のPNGを書き出し、静止画と同様に尺分動画化。個別レイヤー情報は`version.layer_metadata`（4.0.2節）に記録するのみでプロキシ生成の対象にはしない（F-38はShould） |
-| Animation | PSD / 連番PNG | 連番PNGをffmpeg `image2`concatで動画化 |
-| CG Render | EXR（マルチAOV） | 既定AOV（通常beauty）のみをトーンマッピングしてPNG/動画化。他AOVは`version.layer_metadata`に一覧を記録するだけでプロキシは生成しない（AOV情報取得＝F-25はMust、AOV個別プロキシ生成はCould以降） |
-| Composite | AEP / PSD / EXR | **AEPはffmpegで直接プロキシ生成できない**。AE側で書き出し済みの動画/画像があればそれを対象にする。AEPそのものからはメタデータ（レイヤー構成・素材参照）のみを取得する（F-40 DCC Metadata取得、F-41 AE/Nuke依存解析。いずれもShould） |
-| Final | ProRes / MP4 | 既存パイプラインでそのまま正規化 |
+| Representation | 入力形式         | MVPでの扱い                                                                                                                                                                                                                          |
+| -------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Storyboard     | PNG / PDF        | 静止画→尺分の動画化（6.1節のまま）                                                                                                                                                                                                   |
+| Animatic       | MP4              | 既存パイプラインでそのまま正規化                                                                                                                                                                                                     |
+| Layout / BG    | PSD              | レイヤーをflatten統合した1枚のPNGを書き出し、静止画と同様に尺分動画化。個別レイヤー情報は`version.layer_metadata`（4.0.2節）に記録するのみでプロキシ生成の対象にはしない（F-38はShould）                                             |
+| Animation      | PSD / 連番PNG    | 連番PNGをffmpeg `image2`concatで動画化                                                                                                                                                                                               |
+| CG Render      | EXR（マルチAOV） | 既定AOV（通常beauty）のみをトーンマッピングしてPNG/動画化。他AOVは`version.layer_metadata`に一覧を記録するだけでプロキシは生成しない（AOV情報取得＝F-25はMust、AOV個別プロキシ生成はCould以降）                                      |
+| Composite      | AEP / PSD / EXR  | **AEPはffmpegで直接プロキシ生成できない**。AE側で書き出し済みの動画/画像があればそれを対象にする。AEPそのものからはメタデータ（レイヤー構成・素材参照）のみを取得する（F-40 DCC Metadata取得、F-41 AE/Nuke依存解析。いずれもShould） |
+| Final          | ProRes / MP4     | 既存パイプラインでそのまま正規化                                                                                                                                                                                                     |
 
 **MVPで実際にプロキシを生成するのは「動画化できる形式」のみ**（Storyboard/Animatic/Layout/BG/Animation/CG Render beauty/Final）。AEP等のDCCプロジェクトファイルはメタデータ取得に留め、プロキシパイプラインの対象外とする。これにより6.1節の単純な結合方式（差分検知・バックグラウンドジョブ）をRepresentation横断でそのまま再利用できる。
 
@@ -375,8 +379,8 @@ routes/(app)/[title]/[season]/[episode]/+page.svelte
 
 ## 7.3 仮想スクロール（性能要件 N-17: 300カットを1秒以内）
 
-* カットDOMは可視範囲＋バッファ分のみ描画。`IntersectionObserver`または位置計算ベースのwindowingを使う
-* 帯の横軸はコマ数から算出したpx位置にマッピングする純粋関数を用意し、スクロール位置とは独立に計算できるようにする
+- カットDOMは可視範囲＋バッファ分のみ描画。`IntersectionObserver`または位置計算ベースのwindowingを使う
+- 帯の横軸はコマ数から算出したpx位置にマッピングする純粋関数を用意し、スクロール位置とは独立に計算できるようにする
 
 ## 7.4 現在地カーソル（プレイヘッド同期）
 
@@ -394,11 +398,11 @@ Timeline位置（playheadFrame）
 担当者
 ```
 
-* `playheadFrame`はTimelineViewer.svelteが持つ単一の共有状態（Svelte 5 `$state`）。CutTrack/ProcessLanes/Playhead/PlayerPaneはこれを読み書きするだけで、互いを直接参照しない
-* PlayerPaneの`timeupdate`イベント → `playheadFrame`を更新（動画→Timeline方向）
-* Timeline上でのスクラブ／クリック → `playheadFrame`を更新 → PlayerPaneが`video.currentTime`をシーク（Timeline→動画方向）
-* `playheadFrame`から現在のTimelineItemを引く関数は、7.3節のoffset計算と同じ「コマ数⇄px」の純粋関数を再利用する（Core、`lib/core/timeline-item.ts`）。カット位置が分かれば`timeline_band_view`から現在工程、`membership_state`から`process_scope`が一致する担当者を引ける
-* 担当者が複数（例：contributor複数名）いる工程では、直近の`submission.submitted_by`を優先表示する
+- `playheadFrame`はTimelineViewer.svelteが持つ単一の共有状態（Svelte 5 `$state`）。CutTrack/ProcessLanes/Playhead/PlayerPaneはこれを読み書きするだけで、互いを直接参照しない
+- PlayerPaneの`timeupdate`イベント → `playheadFrame`を更新（動画→Timeline方向）
+- Timeline上でのスクラブ／クリック → `playheadFrame`を更新 → PlayerPaneが`video.currentTime`をシーク（Timeline→動画方向）
+- `playheadFrame`から現在のTimelineItemを引く関数は、7.3節のoffset計算と同じ「コマ数⇄px」の純粋関数を再利用する（Core、`lib/core/timeline-item.ts`）。カット位置が分かれば`timeline_band_view`から現在工程、`membership_state`から`process_scope`が一致する担当者を引ける
+- 担当者が複数（例：contributor複数名）いる工程では、直近の`submission.submitted_by`を優先表示する
 
 ## 7.5 Cut Evolution Viewer（Cut Lineage表示）
 
@@ -416,10 +420,10 @@ Timeline位置（playheadFrame）
 └────────────────────────────────────────────────────────┘
 ```
 
-* ルート：`routes/(app)/[title]/[season]/[episode]/cuts/[cutId]/+page.svelte`。TimelineViewer上のCutBarからの遷移のみを入口とし、独立したナビゲーション項目は置かない（要件定義P-01：タイムラインが正規の作品表現である）
-* 各カラムは`representation_current_version`投影（4.1節）を読むだけで、最新版/採用版の両方を表示する
-* 「比較再生」（F-27）は2つのVersionのプロキシを同期再生する。既存のPlayerPane（7.2節）を2インスタンス並べるが、`playheadFrame`（7.4節、Timeline全体で共有）とは状態を分離し、このビュー内だけで完結する個別の再生位置を持たせる
-* EXRのAOV切替やPSDレイヤー比較（F-25, F-38, F-39）は、CG Render/Layoutカラム内のサブUIとして持たせる想定。詳細ワイヤーフレームはShould実装時に検討する
+- ルート：`routes/(app)/[title]/[season]/[episode]/cuts/[cutId]/+page.svelte`。TimelineViewer上のCutBarからの遷移のみを入口とし、独立したナビゲーション項目は置かない（要件定義P-01：タイムラインが正規の作品表現である）
+- 各カラムは`representation_current_version`投影（4.1節）を読むだけで、最新版/採用版の両方を表示する
+- 「比較再生」（F-27）は2つのVersionのプロキシを同期再生する。既存のPlayerPane（7.2節）を2インスタンス並べるが、`playheadFrame`（7.4節、Timeline全体で共有）とは状態を分離し、このビュー内だけで完結する個別の再生位置を持たせる
+- EXRのAOV切替やPSDレイヤー比較（F-25, F-38, F-39）は、CG Render/Layoutカラム内のサブUIとして持たせる想定。詳細ワイヤーフレームはShould実装時に検討する
 
 ---
 
@@ -431,13 +435,13 @@ Timeline位置（playheadFrame）
 
 Jijiのユーザー管理は、ゼロから設計せず、現場のスタッフが直感的に理解できるGoogleスプレッドシートの共有モデルを踏襲する。
 
-| Googleスプレッドシートの概念 | Jijiでの対応 |
-|---|---|
-| フォルダ全体ではなく個別ファイルを共有できる | Title全体、または話数（Timeline）単位で共有範囲を選べる（`membership.scope_type` / `scope_id`） |
-| 権限レベル（閲覧者・コメント可能・編集者・オーナー） | `permission_level`：viewer / contributor / reviewer / admin の4段階（8.2節） |
+| Googleスプレッドシートの概念                           | Jijiでの対応                                                                                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| フォルダ全体ではなく個別ファイルを共有できる           | Title全体、または話数（Timeline）単位で共有範囲を選べる（`membership.scope_type` / `scope_id`）                                                                    |
+| 権限レベル（閲覧者・コメント可能・編集者・オーナー）   | `permission_level`：viewer / contributor / reviewer / admin の4段階（8.2節）                                                                                       |
 | 「特定のユーザーを追加」 vs 「リンクを知っている全員」 | 名前付きアカウント（`membership`）vs 軽量ID共有リンク（`share_link`＋Magic Identity）の二経路。後者も既定では名前入力を伴う軽量IDであり、完全匿名ではない（8.5節） |
-| 個々の共有設定に対する有効期限（Google Workspace機能） | `membership.expires_at`。単話参加者への対応の核（8.3節） |
-| オーナーを0人にはできない | Titleごとにadmin権限のmembershipが最低1人残ることを`decide`で保証する（8.3節） |
+| 個々の共有設定に対する有効期限（Google Workspace機能） | `membership.expires_at`。単話参加者への対応の核（8.3節）                                                                                                           |
+| オーナーを0人にはできない                              | Titleごとにadmin権限のmembershipが最低1人残ることを`decide`で保証する（8.3節）                                                                                     |
 
 Jijiは「リンクを知っている全員が編集可」に相当する組織全体アクセスを持たない。エアギャップ・全アクセス監査（要件N-01/F-15）と衝突するため、内部スタッフも含め**全員が個別のmembershipを持つ**ことを原則とする。
 
@@ -445,14 +449,14 @@ Jijiは「リンクを知っている全員が編集可」に相当する組織�
 
 物理設計は4章のとおり（`membership`テーブル）。ポイントは以下。
 
-* **scope**：`scope_type`が`title`なら作品全体、`timeline`なら話数単位。1話だけ参加する外部スタッフには`timeline`スコープでmembershipを与え、他の話数には一切アクセスできないようにする
-* **permission_level**：閉栓権や管理操作の可否はここで判定する（2.2節の「閉栓権チェック」の実体）
-  * `viewer`：閲覧・通し再生のみ（監督試写、クライアント確認など）
-  * `contributor`：素材提出・バージョン追加ができる（原画・動画・仕上・3D等）
-  * `reviewer`：レビュー入力・Issue起票／クローズができる（演出・作画監督等）
-  * `admin`：上記に加えメンバー管理・Seal操作ができる（制作進行・監督等）
-* **process_scope**：`role`テーブルから引き継いだ工程限定。原画マンならこのmembershipの`process_scope`を`["作画"]`に絞り、他工程のcontributor権限は持たせない
-* **granted_by / revoked_by**：誰が権限を与え・剥奪したかを記録し、F-15（全アクセス監査）に応える
+- **scope**：`scope_type`が`title`なら作品全体、`timeline`なら話数単位。1話だけ参加する外部スタッフには`timeline`スコープでmembershipを与え、他の話数には一切アクセスできないようにする
+- **permission_level**：閉栓権や管理操作の可否はここで判定する（2.2節の「閉栓権チェック」の実体）
+  - `viewer`：閲覧・通し再生のみ（監督試写、クライアント確認など）
+  - `contributor`：素材提出・バージョン追加ができる（原画・動画・仕上・3D等）
+  - `reviewer`：レビュー入力・Issue起票／クローズができる（演出・作画監督等）
+  - `admin`：上記に加えメンバー管理・Seal操作ができる（制作進行・監督等）
+- **process_scope**：`role`テーブルから引き継いだ工程限定。原画マンならこのmembershipの`process_scope`を`["作画"]`に絞り、他工程のcontributor権限は持たせない
+- **granted_by / revoked_by**：誰が権限を与え・剥奪したかを記録し、F-15（全アクセス監査）に応える
 
 権限の付与・変更・失効は`event`テーブルに`MembershipGranted` / `MembershipUpdated` / `MembershipRevoked`として記録する（P-04「過去は消さない」）。一方で**期限切れ自体はイベントにしない**——`expires_at`を過ぎたという事実は付与時点のイベントから常に再計算できるため、時計が進んだだけで発生する「誰の操作でもないイベント」を追加しない。これはCoreの純粋関数`isActive(membership, now)`が担う。
 
@@ -464,18 +468,18 @@ isActive(membership, now) =
 
 ## 8.3 有効期限とライフサイクル（単話参加者への対応）
 
-* `expires_at`はNULL可。恒常スタッフ（社員の制作進行・監督など）は無期限のまま運用できる
-* ただし次の場合はアプリ層（Shellのコマンドハンドラ）で`expires_at`の指定を必須化する：
-  * `person.account_type = external`（外部スタッフ）
-  * `scope_type = timeline`（話数単位の付与＝典型的な単話参加）
-* 既定値はUI側で提案する。話数単位なら「その話数のクランクアップ予定日＋一定バッファ」、作品単位の外部委託なら`share_link`と同じ既定7日・最長90日を流用する
-* 失効判定はセッション確立時だけでなく**リクエスト毎**にクエリ側（`membership_state`投影＋`isActive`）で再評価する。ログイン済みセッションが残っていても、期限が来た瞬間に以降のアクセスは拒否される
-* **最後のadminロックアウト防止**：あるTitleでadmin権限を持つ有効なmembershipが1件だけの状態から、それを失効・降格させる操作は`decide`が拒否する（Google Workspaceの共有ドライブで最後のマネージャーを外せないのと同じ制約）
+- `expires_at`はNULL可。恒常スタッフ（社員の制作進行・監督など）は無期限のまま運用できる
+- ただし次の場合はアプリ層（Shellのコマンドハンドラ）で`expires_at`の指定を必須化する：
+  - `person.account_type = external`（外部スタッフ）
+  - `scope_type = timeline`（話数単位の付与＝典型的な単話参加）
+- 既定値はUI側で提案する。話数単位なら「その話数のクランクアップ予定日＋一定バッファ」、作品単位の外部委託なら`share_link`と同じ既定7日・最長90日を流用する
+- 失効判定はセッション確立時だけでなく**リクエスト毎**にクエリ側（`membership_state`投影＋`isActive`）で再評価する。ログイン済みセッションが残っていても、期限が来た瞬間に以降のアクセスは拒否される
+- **最後のadminロックアウト防止**：あるTitleでadmin権限を持つ有効なmembershipが1件だけの状態から、それを失効・降格させる操作は`decide`が拒否する（Google Workspaceの共有ドライブで最後のマネージャーを外せないのと同じ制約）
 
 ## 8.4 内部ユーザー認証
 
-| 対象 | 方式 | 実装メモ |
-|---|---|---|
+| 対象         | 方式                 | 実装メモ                                                                                                                                                                            |
+| ------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 内部ユーザー | ID/パスワード + TOTP | 外部通信ゼロ要件（N-01相当）を満たすため、TOTP検証はローカル完結のライブラリを使う（QRコード生成も外部CDN不使用）。ログイン成功後もリクエスト毎にmembershipの`isActive`を再検証する |
 
 ## 8.5 外部作業者：Magic Identity（既定）と署名付き共有リンク
@@ -499,10 +503,10 @@ Jiji内部: person（account_type=external, name="佐藤"）を作成し、
           share_linkにひも付くtoken認証でセッションを開始
 ```
 
-* 実装上は`share_link`（`permission_level = contributor`）を開いた初回アクセスで名前入力フォームを挟む。入力された名前で`person`（`account_type = external`）を作成し、`share_link.claimed_person_id`に記録する
-* 以降のアクセスは同じトークン（署名付きCookie等）でその`person`として扱われる。ID/PWは発行しない——**認証はトークン、識別は名前**という役割分担にする
-* 提出・レビューはすべてこの`person_id`で記録されるため、Version/Reviewの記名（F-15）が自動的に満たされる
-* 同一人物が別トークン（別リンク）で来た場合の名寄せはしない（MVPでは「同一トークン＝同一人物」のみ保証する）。名寄せ・長期追跡が要る場合は8.5.4節を使う
+- 実装上は`share_link`（`permission_level = contributor`）を開いた初回アクセスで名前入力フォームを挟む。入力された名前で`person`（`account_type = external`）を作成し、`share_link.claimed_person_id`に記録する
+- 以降のアクセスは同じトークン（署名付きCookie等）でその`person`として扱われる。ID/PWは発行しない——**認証はトークン、識別は名前**という役割分担にする
+- 提出・レビューはすべてこの`person_id`で記録されるため、Version/Reviewの記名（F-15）が自動的に満たされる
+- 同一人物が別トークン（別リンク）で来た場合の名寄せはしない（MVPでは「同一トークン＝同一人物」のみ保証する）。名寄せ・長期追跡が要る場合は8.5.4節を使う
 
 ### 8.5.3 完全匿名を許してよい場合（例外）
 
@@ -512,10 +516,10 @@ Jiji内部: person（account_type=external, name="佐藤"）を作成し、
 
 1話だけ関わる外部スタッフでも、複数話・長期間にわたり同一人物として追跡したい場合はMagic Identityではなくこちらを使う。
 
-| 状況 | 選択肢 |
-|---|---|
+| 状況                                                                 | 選択肢                                                                            |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | 複数話・長期間にわたり同一人物として追跡したい、ログインを求めてよい | `person`（external）＋`timeline`スコープの`membership`。期限は8.3節のとおり必須化 |
-| 単発の依頼で、その場限りの軽量な本人識別で足りる（既定） | 8.5.2節のMagic Identity |
+| 単発の依頼で、その場限りの軽量な本人識別で足りる（既定）             | 8.5.2節のMagic Identity                                                           |
 
 ### 8.5.5 データモデル
 
@@ -544,23 +548,23 @@ Jiji内部: person（account_type=external, name="佐藤"）を作成し、
 
 ## 9.1 スコープと位置づけ
 
-要件定義P-05（原本を奪わない）・10章の実装として、NAS/S3互換/ローカルに加えて**Google DriveとDropboxを原本の置き場所として選べるようにする**。Jijiが原本を複製せず、参照とメタデータ・イベント・プロキシだけを持つという原則（4章）は変わらない——ストレージのバックエンドが増えるだけである。
+要件定義P-05（原本を奪わない）・10章の実装として、社内共有フォルダ/S3互換/ローカルに加えて**Google DriveとDropboxを原本の置き場所として選べるようにする**。Jijiが原本を複製せず、参照とメタデータ・イベント・プロキシだけを持つという原則（4章）は変わらない——ストレージのバックエンドが増えるだけである。
 
-* **対応するのはGoogle DriveとDropboxのみ**。Box・SharePointは将来対応（9.5節）
-* **既定は無効**。接続を有効化した瞬間、そのJijiインスタンス（少なくとも該当Titleのストレージ）は要件定義9章の「外部通信ゼロ・エアギャップ動作可能」の対象外になる。これは「AI機能は完全分離・既定無効」（要件定義9章）と同じ扱い方であり、機能を使うかどうかは運用側が明示的に選ぶ。有効化した接続先・認可したアカウントは監査ログ（F-15）に記録する
+- **対応するのはGoogle DriveとDropboxのみ**。Box・SharePointは将来対応（9.5節）
+- **既定は無効**。接続を有効化した瞬間、そのJijiインスタンス（少なくとも該当Titleのストレージ）は要件定義9章の「外部通信ゼロ・エアギャップ動作可能」の対象外になる。これは「AI機能は完全分離・既定無効」（要件定義9章）と同じ扱い方であり、機能を使うかどうかは運用側が明示的に選ぶ。有効化した接続先・認可したアカウントは監査ログ（F-15）に記録する
 
 ## 9.2 「Webhook URLを貼るだけ」は成立するか：Dropbox ○ / Google Drive ×
 
 調べた結果、DropboxとGoogle Driveでは連携の重さが大きく異なる。「Webhook URLを1個貼れば終わり」という運用はDropboxには当てはまるが、**Google Driveにはそのままでは当てはまらない**。
 
-| | Dropbox | Google Drive |
-|---|---|---|
-| Webhook登録 | App ConsoleにURLを1つ登録するだけ。DropboxがGETでchallengeパラメータを送り、それを返せば検証完了 | `files.watch` / `changes.watch` をAPI呼び出しで実行して「チャンネル」を作る。UIにURLを貼って終わり、ではない |
-| 事前準備 | Appキー登録のみ | **受信ドメインの所有権をGoogle Search Console＋Cloud ConsoleのDomain verificationで事前検証**しないと通知そのものを受け取れない |
-| 認可 | OAuth 2.0（対象Dropboxアカウントの連携） | OAuth 2.0（対象Google Drive/共有ドライブへのアクセス許可） |
-| チャンネルの寿命 | 明示的な失効なし。登録したら継続 | **`files.watch`は最大1日、`changes.watch`は最大1週間で自動失効**。自動更新機構は無く、期限前に新チャンネルを再作成するジョブが必須 |
-| 通知の中身 | 変更のあったアカウント等の情報（詳細は別途API呼び出しで取得） | **通知はほぼ空のping**。`X-Goog-Resource-State`等のヘッダのみで、実際に何が変わったかは`changes.list`を別途呼んで調べる必要がある |
-| 受信要件 | 公開HTTPS＋有効なSSL証明書 | 公開HTTPS＋有効なSSL証明書（自己署名不可） |
+|                  | Dropbox                                                                                          | Google Drive                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Webhook登録      | App ConsoleにURLを1つ登録するだけ。DropboxがGETでchallengeパラメータを送り、それを返せば検証完了 | `files.watch` / `changes.watch` をAPI呼び出しで実行して「チャンネル」を作る。UIにURLを貼って終わり、ではない                       |
+| 事前準備         | Appキー登録のみ                                                                                  | **受信ドメインの所有権をGoogle Search Console＋Cloud ConsoleのDomain verificationで事前検証**しないと通知そのものを受け取れない    |
+| 認可             | OAuth 2.0（対象Dropboxアカウントの連携）                                                         | OAuth 2.0（対象Google Drive/共有ドライブへのアクセス許可）                                                                         |
+| チャンネルの寿命 | 明示的な失効なし。登録したら継続                                                                 | **`files.watch`は最大1日、`changes.watch`は最大1週間で自動失効**。自動更新機構は無く、期限前に新チャンネルを再作成するジョブが必須 |
+| 通知の中身       | 変更のあったアカウント等の情報（詳細は別途API呼び出しで取得）                                    | **通知はほぼ空のping**。`X-Goog-Resource-State`等のヘッダのみで、実際に何が変わったかは`changes.list`を別途呼んで調べる必要がある  |
+| 受信要件         | 公開HTTPS＋有効なSSL証明書                                                                       | 公開HTTPS＋有効なSSL証明書（自己署名不可）                                                                                         |
 
 出典: [Google Drive push notifications](https://developers.google.com/workspace/drive/api/guides/push) / [Domain verification](https://support.google.com/googleapi/answer/7072069) / [Dropbox Webhooks](https://www.dropbox.com/developers/reference/webhooks)
 
@@ -592,11 +596,11 @@ Push通知（Dropbox webhook、Google Drive watch channel）は共通して「�
 
 4章の物理設計に追加する新テーブル（Should、F-42）:
 
-| テーブル | 主なカラム | 設計上の注意 |
-|---|---|---|
+| テーブル            | 主なカラム                                                                                                                                       | 設計上の注意                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `storage_connector` | id, title_id, provider(google_drive/dropbox), auth_ref, root_folder_ref, sync_cursor(nullable), enabled(bool, 既定false), created_by, created_at | `auth_ref`はOAuthトークンそのものではなく参照。トークンの実体をどこに保存するか（DB暗号化 or 外部secret store）は10章「未決定事項」 |
 
-`representation` / `submission`が持つ`file_ref`（4章）は、クラウド接続時は`storage_connector_id`を介して解決するfile ID/パスを保持する。既存の`storage-ref.ts`（3章：NAS/S3互換/ローカル参照アダプタ）にproviderの分岐を足すだけで済み、Cut/Representation/Version自体の構造（4.0.2節）には影響しない——ストレージ種別が増えるだけである。
+`representation` / `submission`が持つ`file_ref`（4章）は、クラウド接続時は`storage_connector_id`を介して解決するfile ID/パスを保持する。既存の`storage-ref.ts`（3章：社内共有フォルダ/S3互換/ローカル参照アダプタ）にproviderの分岐を足すだけで済み、Cut/Representation/Version自体の構造（4.0.2節）には影響しない——ストレージ種別が増えるだけである。
 
 クラウド上のどのファイルがどのCutのどのRepresentationに対応するかというマッピング規則（フォルダ命名規約か、マッピングUIか）は未確定。10章「未決定事項」参照。
 
@@ -606,24 +610,172 @@ Push通知（Dropbox webhook、Google Drive watch channel）は共通して「�
 
 ---
 
+## 9.6 社内Relay — ブラウザを短命の共有フォルダ配送ワーカーにする
+
+クラウドホスト版では、外部スタッフが到達できるJijiクラウドと、外部へ公開しない社内共有フォルダを同じ出稿先として扱う必要がある。ここで社内サーバー、共有フォルダ用エージェント、VPN、受信ポートを新設しない。**社内共有フォルダに到達できるPCで開かれているJijiのRelay画面だけを、クラウドから共有フォルダへの配送ワーカーにする。**
+
+Relayは社内共有フォルダをネットワーク越しに公開するプロキシではない。クラウドがRelayへ配送ジョブを貸し出し、Relayがクラウドから受け取ったファイルを、選択済みDirectory Handle配下へ書き込む片方向の仕組みである。従って、外部利用者が共有フォルダのパス・IP・SMB資格情報に触れる経路はない。
+
+### 9.6.1 サポート範囲と端末設定
+
+RelayはFile System Access APIのDirectory Handleを使えるデスクトップChromium系ブラウザ（Chrome / Edge）をMVP対象とする。ネットワークドライブ、ファイルサーバー共有、またはローカルフォルダがOS上で利用でき、フォルダ選択UIから辿れることが前提である。Firefox / Safari、モバイルブラウザ、およびVSCode内蔵プレビュー等のWebview環境はRelayにはできない（`showDirectoryPicker`が存在しないか、ネイティブダイアログを表示できずPromiseがpendingのまま止まる）が、通常のJijiクラウド利用・出稿は妨げない。
+
+初回設定は、`person.relayEnabled`（owner/adminが個人に付与する明示フラグ。8章の`workspaceRole`とは別軸の権限）を持つログイン済みユーザーが、Relay画面からユーザー操作で行う。
+
+```text
+［この端末をJiji Relayにする］
+           ↓
+showDirectoryPicker({ mode: 'readwrite' })
+           ↓
+選択した社内共有フォルダのルートを Directory Handle として保存
+           ↓
+ルートの読み書き検証 → Relay 登録 → heartbeat 開始
+```
+
+Directory HandleはサーバーDBへ送らない。ブラウザのIndexedDBに、接続（`relay_storage_connection`）ごとにHandleを保存する。ブラウザプロファイルのサイトデータを消した場合、別ブラウザへ移った場合、または共有フォルダのマウントが失われた場合は、Relayを再設定する。これはユーザー単位ではなく端末・ブラウザ単位の設定である。
+
+ログイン直後・ページ再読込のたびに、保存済みHandleへの許可が既に`'granted'`であれば、ユーザー操作なしで黙って再接続する（`queryPermission`だけを使い、`requestPermission`はユーザー操作の文脈でなければ実際にはプロンプトを出さないため、未許可の場合は自動的に`offline`のまま留まる——ポップアップは出ない）。この接続状態はページ単位ではなくSvelte 5のモジュールrunes（`src/lib/client/relay-connection.svelte.ts`）でアプリ全体の単一stateとして持ち、`relayEnabled`を持つ内部スタッフ全員のヘッダーへ常時、簡易な接続バッジ（CONNECTED / DISCONNECTED）を表示する。バッジから`/relay`へ実際に遷移できるのは`workspaceRole`がowner/adminのユーザーだけで、それ以外には同じ見た目のまま押せない表示にする——バッジ自体はチーム全体へのアンビエントな状態表示であり、`/relay`ページ本体のアクセス制御（`relayEnabled`）とは別の軸で切り替える。HandleやOS上の絶対パスをクラウドのAPI、監査画面、外部スタッフへ送らない。
+
+### 9.6.2 組織指定Object Storage（データプレーン）
+
+Relayのファイル本体はJiji管理のCloudflare R2へ固定保存しない。Titleの運営者（`manageProduction`権限）が作品設定画面で指定したObject Storageのバケット／コンテナと専用の対象フォルダ（内部的には`prefix`カラム）を、転送待ち領域として使う。対応providerと実装状況は次の通り。
+
+| provider        | 接続先                         | 実装状況                                                     |
+| --------------- | ------------------------------ | -------------------------------------------------------------- |
+| `s3`            | Amazon S3                      | 実装済み（`aws4fetch`によるSigV4署名）                        |
+| `s3_compatible` | Cloudflare R2、MinIO、Wasabi等 | 実装済み（同上）                                              |
+| `supabase`      | Supabase Storage（S3互換API）  | 実装済み（同上。endpointに`https://<ref>.storage.supabase.co/storage/v1/s3`を指定） |
+| `gcs`           | Google Cloud Storage           | 未実装（接続設定は保存できるが、Relay取得・削除は明示エラーになる） |
+| `azure_blob`    | Azure Blob Storage             | 未実装（同上）                                                |
+
+Cloudflare R2は`S3互換`の一実装として扱い、R2専用のデータモデル・API・バケットを要求しない。JijiのCloudflare Worker/D1などは認可、ジョブ状態、監査イベントを保持する**制御プレーン**に留め、成果物バイト列の永続先は常に組織指定の接続設定から解決する。
+
+接続設定には、provider、endpoint（S3互換の場合）、region、bucket/container、対象フォルダ（prefix）に加え、**Access Key ID / Secret Access Keyそのもの**を保持する。当初案は「秘密情報は外部secret storeへの参照だけを持つ」想定だったが、セルフホストで組織ごとに異なる鍵を運用管理者がその場で払い出す運用に合わせ、`relay_storage_connection`テーブルへ管理者フォームから直接入力・保存する形に変更した。ブラウザへは絶対に返さない（`accessKeyId`/`secretAccessKey`を除いた投影だけをクライアントへ渡す）。**暗号化は現時点で行っていない**——自己ホストのSQLite単一テナント運用を前提にした簡略化であり、ホスティングSaaS（D1・複数テナント共存）へ展開する前に、暗号化または外部secret storeを参照する形への切替を要する（10章）。
+
+保存前の接続検証（書込み・削除・CORS preflightの事前確認）は未実装。接続を保存した時点では到達性を確認せず、実際にRelayが取得・削除を試みて初めて失敗が判明する。
+
+ブラウザへ返すのは、単一object・GETメソッド・短い有効期限（既定5分）に縛った署名付きダウンロードURLだけであり、恒久的なストレージ資格情報は返さない。**DELETEはブラウザに署名URLを渡さず、配送確認を受けたJijiサーバーが保存済みのAccess Key / Secret Keyで直接実行する。**
+
+安全に署名付きURLを発行できない独自S3互換実装はMVP対象外とする。Jijiサーバーが大容量ファイルを中継するfallbackを既定にすると、ホスティングの帯域とコストを組織指定ストレージへ分離する目的を損なうためである。
+
+### 9.6.3 クラウド側の正本（制御プレーン）
+
+Relayの可用性と配送ジョブの正本はJijiクラウドのDBに置く。ブラウザのローカル状態を正本にしない。このアプリに独立した「組織」テーブルは無く、Title自体がテナント境界を兼ねるため、以下は全てTitle単位（`title_id`）でスコープする。
+
+| テーブル                  | 主な内容                                                                                                                                                                                                                                                                                                                                                | 注意                                                                                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `relay_storage_connection` | id, title_id, provider, endpoint(nullable), region(nullable), bucket_or_container, prefix, auth_ref, access_key_id(nullable), secret_access_key(nullable), enabled, created_by, created_at                                                                                                                                                             | `access_key_id`/`secret_access_key`は9.6.2参照。`auth_ref`は運用上のラベル文字列であり、鍵の参照先ではない。                                             |
+| `relay_registration`       | id, title_id, storage_connection_id, browser_instance_id, display_name, registered_by, allowed_root_key, writable, last_heartbeat_at, last_error_code, created_at                                                                                                                                                                                       | `allowed_root_key`は作品設定上の論理名であり、共有フォルダの実パスではない。Directory Handleは保存しない。`writable`がheartbeatから導く現在能力を兼ね、独立した`relay_capability`テーブルは作らなかった。 |
+| `relay_transfer_job`       | id, title_id, storage_connection_id, source_object_key, target_relative_path, expected_size, expected_sha256(nullable), state, delivered_size(nullable), delivered_sha256(nullable), shared_folder_verified_at(nullable), source_delete_state, source_deleted_at(nullable), source_delete_retry_count, source_delete_last_error_code, retry_count, lease_until, leased_relay_id, created_at | 独立した`relay_object`は作らず、object storageのkey/sizeを直接このテーブルへ持たせた（9.6.5節「1 job = 1 object」の単純化）。`expected_sha256`は出稿元が事前計算していない場合null——その場合はサイズ一致のみで検証する。 |
+| `relay_transfer_attempt`   | id, job_id, relay_id, lease_token, result, actual_size(nullable), actual_sha256(nullable), error_code(nullable), created_at                                                                                                                                                                                                                             | 試行を上書きせず記録する。                                                                                                                               |
+
+`browser_instance_id`は同一ブラウザプロファイルに保存するランダムIDで、認証や権限の代替ではない。heartbeat・claim・完了報告のたびに、ログインセッション、`person.relayEnabled`、Titleスコープをサーバー側で検証する。
+
+### 9.6.4 状態機械とheartbeat
+
+Relayが接続中で、Directory Handleへの書込み検証に成功している間だけ、20秒間隔を目安にHTTPS heartbeatを送る。サーバーは`last_heartbeat_at`から表示状態を導出する（`deriveRelayStatus`）。この接続状態はページ単位ではなくSvelte 5のモジュールrunes（9.6.1参照）でアプリ全体の単一stateとして持つため、`/relay`画面を閉じて他ページを回遊していてもheartbeatは継続する。
+
+```text
+0–60 秒     online      ジョブを貸出可能
+60–120 秒   checking     新規貸出しない。既存leaseの猶予
+120 秒超過  offline      新規貸出しない。期限切れleaseを再キュー
+```
+
+ブラウザの休止、タブの破棄、PCスリープ、ネットワーク断を確実に検知するAPIには依存しない。heartbeat停止を唯一の安全なオフライン判定とする。Relay画面は転送中に閉じず、PCをスリープさせない運用をUIに明示する。バックグラウンドタブの実行はブラウザ都合で遅延し得るため、常駐エージェントと同等の可用性は約束しない。
+
+### 9.6.5 配送プロトコル
+
+Submission機能（design.md 13章のPhase 2相当）はまだ無い。そのため出稿がjobを作るのではなく、Relayブラウザ側の「今すぐ取得」操作を起点に、発見から削除まで一気に行う。
+
+```text
+1. 利用者が「今すぐ取得」を押す
+2. Jijiサーバーが接続済みbucket/prefix配下をListObjectsV2でlist scanし、`relay_transfer_job`に未登録のobjectを新規pendingとして発見する（expected_sizeはlisting由来、expected_sha256はnull）
+3. pending、またはlease切れのjobをこのRelayへclaimし、各jobのsource objectに対する短寿命ダウンロードURL（既定5分）を発行して返す
+4. Relayブラウザが署名付きURLをHTTPS GETし、対象フォルダ相対パス（object keyからprefixを除いた部分）へ直接書込む
+5. 書込んだバイト列のSHA-256をブラウザ側で計算し、実サイズと合わせてJijiサーバーへ報告する
+6. サーバーがexpected_size（およびexpected_sha256があれば一致も）を検証して`delivered`にし、監査Eventを追記する
+7. 検証成功と同じリクエストの中で、Jijiサーバーが保存済みAccess Key / Secret Keyでprovider adapterへ直接DELETEを発行し、`source_delete_state=deleted`と`RelaySourceDeleted`監査Eventを記録する
+```
+
+この発見モデルは「1 job = 1 object」に単純化しており、当初案が想定していた複数出稿先への同時fan-out（9.6.3の「同じsource objectを参照する全jobの確認」）は現状使っていない——list scanで見つけたobjectは、そのTitleの1接続にしか結び付かないためである。
+
+パスはサーバー側で対象フォルダ（prefix）に対する相対パスとして導出・検証し（`deriveRelayTargetRelativePath` / `isSafeTargetRelativePath`）、`..`、絶対パス、prefix脱出を拒否する。Relayは利用者指定の任意パスを受け取らず、object keyから機械的に導いた相対パスにしか書き込まない。
+
+**当初案との既知の差分（未実装）**：`.jiji-part-{jobId}`への一時書込み→検証後に最終名へrenameするステージング方式は実装していない。現状は最終名へ直接ストリーム書込みするため、ブラウザが書込み途中でクラッシュ・強制終了すると対象フォルダに不完全な最終名ファイルが残るリスクがある（10章）。また、取得したファイル全体を一度`ArrayBuffer`としてブラウザメモリへ載せてからSHA-256計算・書込みしており、当初案が求めていたReadableStreamからのストリーミング書込み・ストリーミングハッシュ計算にはなっていない——数十GB級の素材では未検証（9.6.1・10章参照）。組織指定Object Storageからの取得は短寿命URLで行い、Relayへ恒久的なストレージ認証情報は渡さない。
+
+### 9.6.6 lease、再試行、複数Relay
+
+ジョブclaimは`pending`かつ`lease_until < now`だけを対象にする。一つのjobには一つの`lease_token`だけが有効である。Relayが終了・通信断した場合は、`lease_until`満了後に同じジョブを`pending`へ戻し、別Relayが取得できる。実装は単一プロセスのSQLiteセルフホストを前提に、真の条件付きUPDATE文ではなく`db.transaction()`内でread→Core decide→writeする形で原子性を担保している（CLAUDE.md 6章のコマンド規約と同じ）。将来Cloudflare D1のような分散環境へ載せる場合は、本来の条件付きUPDATEへの置き換えを検討する（10章）。
+
+完了報告は`job_id + lease_token + expected_sha256`に加え、共有フォルダから再読込した`actual_size + actual_sha256`を照合する。すでに別Relayが成功させたジョブは冪等に成功として扱い、二重に共有フォルダへ書き込まない。`retryable`（通信断、Relay終了、共有フォルダ一時不達）と`terminal`（権限拒否、パス競合、容量不足）のエラーを区別し、後者は出稿先管理者へ通知する。Relayが再びオンラインになれば`retryable`なジョブを継続する。
+
+共有フォルダ配送の確認後にproviderのDELETEが失敗・タイムアウトした場合は、`source_delete_state=retryable_error`として削除だけを再試行する。再試行前にはobjectのHEAD／存在確認を行い、既に存在しなければ削除成功として記録する。元objectの削除に失敗したからといって共有フォルダ配送をやり直してはならない。UIはこの間を「共有フォルダ格納済み・クラウド削除待ち」と表示し、`deleted`になるまで全体を「完了」と表示しない。
+
+複数のRelayが同じ論理出稿先を担当できる。UIには`BOB-PC`、`CAROL-PC`のような利用者が付けた表示名と、オンライン状態だけを出し、端末名・共有フォルダのパス・内部IPは外部利用者に露出しない。優先度や負荷分散は当初、同一出稿先で最も長く待っているジョブを、十分なlease余裕を持つ任意のonline Relayへ貸し出すだけでよい。
+
+### 9.6.7 実装境界
+
+```text
+Browser（アプリ全体で共有し、/relayページに限らない）
+  src/lib/client/relay-connection.svelte.ts … Svelte 5 module runesによる単一state
+  IndexedDB: 接続（storage_connection_id）ごとのDirectory Handle
+  localStorage: browser_instance_id、接続ごとの登録情報、直近接続先へのポインタ
+  File System Access API: 権限照会（queryPermission）、書込み検証、確定書込み
+  fetch: heartbeat、claim（「今すぐ取得」起点）、短寿命URLからの直接ダウンロード、配送完了報告
+
+SvelteKit Shell
+  src/lib/server/shell/commands/
+    register-relay.ts, configure-relay-storage.ts, set-relay-storage-credentials.ts,
+    claim-relay-transfer-jobs.ts, complete-relay-transfer-delivery.ts
+    （completeRelayTransferDelivery内でDELETEまで直列に呼ぶ。独立した
+     deleteDeliveredSourceObjectコマンドには分けていない）
+  src/lib/server/shell/relay-object-storage.ts … aws4fetchによるS3互換API直叩き
+    （list / 署名付きGET presign / HEAD / DELETE）。s3 / s3_compatible / supabaseのみ対応
+  DBのlease更新、認可、監査イベント追記
+
+Core（src/lib/core/relay.ts）
+  deriveRelayStatus(lastHeartbeatAt, writable, now)
+  decideRelayJobClaim(jobState, leaseUntil, relayStatus, now)
+  decideRelayDeliveryVerification(expectedSize, expectedSha256|null, actualSize, actualSha256)
+  decideRelaySourceCleanup(deliveries, sourceDeleteState)
+  isSafeTargetRelativePath(path) / deriveRelayTargetRelativePath(objectKey, prefix)
+  validateRelayStorageConfig(input)
+
+Presentation
+  src/routes/relay/+page.svelte … 初回フォルダ選択・状態詳細・「今すぐ取得」ボタン
+  src/lib/components/RelayConnectionBadge.svelte … ヘッダーのCONNECTED/DISCONNECTEDバッジ
+    （relayEnabledに関係なく内部スタッフ全員に表示。workspaceRoleがowner/adminの場合だけ
+     /relayへのリンクとして機能し、それ以外は同じ見た目のまま押せない表示にする）
+```
+
+HTTPのポーリングだけで実現しており、当初の見込み通りRelayのためだけにWebSocket、Durable Object、社内常駐プロセスは要らなかった。ただし「今すぐ取得」は利用者操作起点の単発ポーリングであり、heartbeatの間隔（20秒）に連動した自動claimループは実装していない——ジョブの発見・取得には明示的なボタン操作を要する。
+
+---
+
 # 10. 未決定事項
 
-* DuckDBの採用方法：TypeScript環境からの利用手段（Node/Bun向けバインディング or WASM）。イベントログ分析用途にSQLite側の集計クエリで代替できないかを含めて検討する
-* Cloudflare D1版のffmpeg実行手段（Workers上ではネイティブプロセスが起動できないため、ホスティングSaaS版のプロキシ生成方式を別途設計する）
-* 投影テーブルの再構築手段：スキーマ変更やバグ修正後に`event`からの一括リプレイで投影テーブルを作り直すバッチ処理の設計
-* membershipの期限切れ通知：期限が近いメンバーを制作進行に事前通知する手段（UIバッジのみで足りるか、メール等の能動的通知が要るか）。外部通信ゼロ原則との整合を含めて検討する
-* membershipの失効反映タイミング：リクエスト毎の`isActive`再評価で十分か、長時間セッションを能動的に切断する仕組み（WebSocket等）が要るか
-* Magic Identityのトークン運用：端末紛失・トークン漏洩時の再発行／失効フロー。同一人物が複数トークンを持った場合に`person`を統合する手段の要否
-* TimelineItemの他種別（Audio/Transition/Marker）に7章の工程DAGをどこまで適用するか。OP/ED/CM・劇場版/配信版への拡張時に再検討する
-* 現在地カーソル（7.4節）の同期粒度とパフォーマンス：フレーム単位で追従させるか一定間隔に間引くか、スクラブ中の再描画コスト
-* `version.artifact_metadata`（EXR AOV/PSDレイヤー情報、4.0.2節）の具体的なJSON形状：AOV名・レイヤー名一覧だけで足りるか、解像度・カラースペース・ビット深度等も持つか
-* EXRのトーンマッピング方式（6.3節）：OCIO設定をJiji側で管理するか、素材提出側に正規化済みLUT適用済みの書き出しを求めるか
-* AEP/Nukeスクリプトのメタデータ抽出手段（F-40, F-41）：パーサライブラリの選定。AE/Nuke本体を必要としないオフライン解析が可能か
-* Representationの標準typeカタログ（storyboard/animatic/layout/animation/bg/cg_render/composite/final）は、どのプロジェクトで使うかはTitle単位のチェックボックスで選べるようにした（4.0.2節改訂）。残る論点は「この8種のカタログ自体が全スタジオをカバーしきれているか」——カタログに無い種類が必要なスタジオが出てきた場合、(a) カタログに新項目を足す（固定enumのまま増やす。全プロジェクト共通の選択肢が増えるだけ）か、(b) Titleごとの自由記述を許す（固定enumの前提を崩す）か。前者で足りる間はPhase 0的な実データ収集は急がなくてよい
-* Representationの派生関係（`derived_from_relation`: refined/converted/replaced、4.0.2節）は3種で十分か。Cut Lineageの可視化（Cut Evolution Viewer）を実際に使ってみてから見直す
-* クラウドストレージ連携（9章）のOAuthトークン保存方式：DBに暗号化して持つか、OS keychain相当／外部secret storeを参照する形にするか
-* クラウドストレージ連携（9章）のフォルダ⇔Cut/Representationマッピング規約：固定の階層命名（例：`/C-125/Layout/`）をスタジオに要求するか、Jiji側にマッピングUIを用意して任意のフォルダ構成を許すか
-* クラウドストレージ連携（9章）のポーリング間隔：既定5分は妥当か。Title/Timelineごとに変更可能にする必要があるか
+- DuckDBの採用方法：TypeScript環境からの利用手段（Node/Bun向けバインディング or WASM）。イベントログ分析用途にSQLite側の集計クエリで代替できないかを含めて検討する
+- Cloudflare D1版のffmpeg実行手段（Workers上ではネイティブプロセスが起動できないため、ホスティングSaaS版のプロキシ生成方式を別途設計する）
+- 投影テーブルの再構築手段：スキーマ変更やバグ修正後に`event`からの一括リプレイで投影テーブルを作り直すバッチ処理の設計
+- membershipの期限切れ通知：期限が近いメンバーを制作進行に事前通知する手段（UIバッジのみで足りるか、メール等の能動的通知が要るか）。外部通信ゼロ原則との整合を含めて検討する
+- membershipの失効反映タイミング：リクエスト毎の`isActive`再評価で十分か、長時間セッションを能動的に切断する仕組み（WebSocket等）が要るか
+- Magic Identityのトークン運用：端末紛失・トークン漏洩時の再発行／失効フロー。同一人物が複数トークンを持った場合に`person`を統合する手段の要否
+- TimelineItemの他種別（Audio/Transition/Marker）に7章の工程DAGをどこまで適用するか。OP/ED/CM・劇場版/配信版への拡張時に再検討する
+- 現在地カーソル（7.4節）の同期粒度とパフォーマンス：フレーム単位で追従させるか一定間隔に間引くか、スクラブ中の再描画コスト
+- `version.artifact_metadata`（EXR AOV/PSDレイヤー情報、4.0.2節）の具体的なJSON形状：AOV名・レイヤー名一覧だけで足りるか、解像度・カラースペース・ビット深度等も持つか
+- EXRのトーンマッピング方式（6.3節）：OCIO設定をJiji側で管理するか、素材提出側に正規化済みLUT適用済みの書き出しを求めるか
+- AEP/Nukeスクリプトのメタデータ抽出手段（F-40, F-41）：パーサライブラリの選定。AE/Nuke本体を必要としないオフライン解析が可能か
+- Representationの標準typeカタログ（storyboard/animatic/layout/animation/bg/cg_render/composite/final）は、どのプロジェクトで使うかはTitle単位のチェックボックスで選べるようにした（4.0.2節改訂）。残る論点は「この8種のカタログ自体が全スタジオをカバーしきれているか」——カタログに無い種類が必要なスタジオが出てきた場合、(a) カタログに新項目を足す（固定enumのまま増やす。全プロジェクト共通の選択肢が増えるだけ）か、(b) Titleごとの自由記述を許す（固定enumの前提を崩す）か。前者で足りる間はPhase 0的な実データ収集は急がなくてよい
+- Representationの派生関係（`derived_from_relation`: refined/converted/replaced、4.0.2節）は3種で十分か。Cut Lineageの可視化（Cut Evolution Viewer）を実際に使ってみてから見直す
+- クラウドストレージ連携（9章）のOAuthトークン保存方式：DBに暗号化して持つか、OS keychain相当／外部secret storeを参照する形にするか。社内Relay（9.6.2節）はこれと同種の論点を先に迎え、Access Key ID / Secret Access Keyを暗号化なしでDBへ直接保存する形にした（自己ホスト単一テナント前提の簡略化）。ホスティングSaaS（D1・複数テナント共存）へ展開する前に、両者まとめて暗号化または外部secret store参照へ切り替える
+- クラウドストレージ連携（9章）のフォルダ⇔Cut/Representationマッピング規約：固定の階層命名（例：`/C-125/Layout/`）をスタジオに要求するか、Jiji側にマッピングUIを用意して任意のフォルダ構成を許すか
+- クラウドストレージ連携（9章）のポーリング間隔：既定5分は妥当か。Title/Timelineごとに変更可能にする必要があるか
+- 社内Relayの宛先ディレクトリ構成：Submission機能が無い現状は、object keyから対象フォルダ（prefix）を除いた相対パスをそのまま`target_relative_path`にしている（9.6.5節）。Submission機能を作る際は、出稿先ごとの論理パス生成（固定テンプレート、作品設定、提出時の選択肢）を改めて設計する。利用者の任意パス入力はルート逸脱の原因になるため採用しない
+- 社内Relayの対応ブラウザと大容量ファイルの実地検証：対象スタジオのNAS、Windowsマップドドライブ、ブラウザのバックグラウンド制限、数十GB素材でのストリーム安定性を検証する。現状の実装は取得ファイル全体をブラウザメモリへ載せる方式（9.6.5節）で、ストリーミング書込みには未対応
+- 社内Relayの保存前接続検証：管理者が接続設定を保存する時点でのCORS preflight・書込み／削除の事前確認は未実装。実際の取得・削除操作で初めて失敗が判明する（9.6.2節）
+- 社内Relayの書込み原子性：`.jiji-part-{jobId}`ステージング→検証後renameという当初案は未実装で、最終名へ直接書込んでいる。ブラウザのクラッシュ・強制終了時に不完全な最終名ファイルが残るリスクが残る（9.6.5節）
+- 社内Relayが対応するObject Storage providerの拡張：現状`s3`/`s3_compatible`/`supabase`のみ実装（`aws4fetch`によるSigV4署名）。`gcs`/`azure_blob`は接続設定こそ保存できるが取得・削除は明示エラーになる（9.6.2節）
+- 社内RelayのListObjectsV2レスポンス解析：正式なXMLパーサではなく軽量な正規表現で`<Contents>`/`<Key>`/`<Size>`/`<ETag>`だけを読み取っている（`relay-object-storage.ts`）。標準的なS3/Supabase出力では動作するが、厳密なXML仕様には対応していない
 
 ---
 
@@ -700,11 +852,11 @@ title C:  「レイアウト（3Dあたり付き）」
 
 辺は次の3種類だけに制限する。
 
-| 辺 | 意味 | システム上の効果 |
-| --- | --- | --- |
+| 辺         | 意味                                     | システム上の効果                                     |
+| ---------- | ---------------------------------------- | ---------------------------------------------------- |
 | `requires` | 前提が満たされなければ着手／通過できない | Readinessをブロックし、下流へ`blocked`影響を伝播する |
-| `feeds` | 素材・成果物を渡す | 未更新版で作業した場合に`review_required`を伝播する |
-| `informs` | 創作上の参考・意図を渡す | 通知対象にはなるが締切をブロックしない |
+| `feeds`    | 素材・成果物を渡す                       | 未更新版で作業した場合に`review_required`を伝播する  |
+| `informs`  | 創作上の参考・意図を渡す                 | 通知対象にはなるが締切をブロックしない               |
 
 この区別が重要である。演出メモは重要でも、撮影の開始を止める「物理的な前提」とは限らない。すべてを依存関係にすると、現場の探索を納期ブロックへ誤変換してしまう。
 
@@ -724,10 +876,10 @@ Blueprint v4 (published)
   └─ 以降に作るカットの既定値
 ```
 
-* 公開済みBlueprintは更新しない。変更は `ProductionBlueprintPublished` で新versionを作る。
-* 既存カットを新Blueprintへ移す操作は一括更新ではなく、対象カットと理由を明示した `CutBlueprintAdopted` イベントにする。これにより「なぜC-042だけ従来と工程が違うか」を追跡できる。
-* カット固有の例外は新しい自由工程ではなく、既存nodeの `required`／`bypass`／`additional_review` を宣言する `CutProcessOverrideDeclared` として表す。例外には理由・決定者・期限を必須にする。
-* DAGの循環、未解決のcanonical key、必須nodeに成果物型がない状態、締切の逆転は `decidePublishBlueprint` が拒否する。
+- 公開済みBlueprintは更新しない。変更は `ProductionBlueprintPublished` で新versionを作る。
+- 既存カットを新Blueprintへ移す操作は一括更新ではなく、対象カットと理由を明示した `CutBlueprintAdopted` イベントにする。これにより「なぜC-042だけ従来と工程が違うか」を追跡できる。
+- カット固有の例外は新しい自由工程ではなく、既存nodeの `required`／`bypass`／`additional_review` を宣言する `CutProcessOverrideDeclared` として表す。例外には理由・決定者・期限を必須にする。
+- DAGの循環、未解決のcanonical key、必須nodeに成果物型がない状態、締切の逆転は `decidePublishBlueprint` が拒否する。
 
 これにより「作品ごとに違う」ことを許容しつつ、工程定義が恣意的な状態フラグの集合へ崩れることを防ぐ。
 
@@ -791,11 +943,11 @@ Layout v05 を v06 へ差替
 
 影響の重大度は決定論的に導出する。人の判断が必要な通知を勝手に「エラー」にはしない。
 
-| 条件 | severity | 表示 |
-| --- | --- | --- |
-| `informs`のみ、または採用前の根拠が変化 | `info` | 参考が更新されたことを表示 |
-| 確認済みゲート／Decision Capsuleの根拠が変化 | `review_required` | 確認依頼としてInboxへ積む |
-| `requires`前提の消失、期限超過、必須成果物の欠落 | `blocked` | 次工程のReadinessを止め、制作進行へ表示 |
+| 条件                                             | severity          | 表示                                    |
+| ------------------------------------------------ | ----------------- | --------------------------------------- |
+| `informs`のみ、または採用前の根拠が変化          | `info`            | 参考が更新されたことを表示              |
+| 確認済みゲート／Decision Capsuleの根拠が変化     | `review_required` | 確認依頼としてInboxへ積む               |
+| `requires`前提の消失、期限超過、必須成果物の欠落 | `blocked`         | 次工程のReadinessを止め、制作進行へ表示 |
 
 `ImpactAcknowledged` は「通知を読んだ」事実だけを記録する。影響そのものの解消は、再レビュー、再提出、ゲート通過という別の制作イベントで導出する。この分離により、既読が解決の偽装になることを防ぐ。
 
@@ -813,14 +965,14 @@ Blueprintの必要node・edge
   = Readiness
 ```
 
-| status | 意味 | 次のアクション |
-| --- | --- | --- |
-| `not_ready` | 前提成果物または必須割当がない | 上流の提出／割当を促す |
-| `ready` | 作業を開始できる | 割当アーティストのタスクとして表示 |
-| `awaiting_review` | 成果物はあるがゲート未通過 | 指定レビューアへ確認依頼 |
-| `passed` | 現在の根拠で通過済み | 下流nodeを評価する |
-| `stale` | 根拠が更新され再確認が必要 | 影響理由を添えて再レビュー |
-| `waived` | 期限付きの例外で通過扱い | 例外理由・失効日時を常時表示 |
+| status            | 意味                           | 次のアクション                     |
+| ----------------- | ------------------------------ | ---------------------------------- |
+| `not_ready`       | 前提成果物または必須割当がない | 上流の提出／割当を促す             |
+| `ready`           | 作業を開始できる               | 割当アーティストのタスクとして表示 |
+| `awaiting_review` | 成果物はあるがゲート未通過     | 指定レビューアへ確認依頼           |
+| `passed`          | 現在の根拠で通過済み           | 下流nodeを評価する                 |
+| `stale`           | 根拠が更新され再確認が必要     | 影響理由を添えて再レビュー         |
+| `waived`          | 期限付きの例外で通過扱い       | 例外理由・失効日時を常時表示       |
 
 この投影はイベント再生から再構築できる。`status`列をユーザーが直接更新するUIは作らない。
 
@@ -886,30 +1038,30 @@ projectImpact(graph, proposedEvent)           -> Impact[]
 
 ### 主要イベント
 
-| イベント | ストリーム | 意味 |
-| --- | --- | --- |
-| `ProductionBlueprintPublished` | title | 新しい工程テンプレートを公開 |
-| `CutBlueprintAdopted` | cut | 既存カットがどのBlueprintを採用したか |
-| `StudioTermDefined` / `StudioTermRetired` | title | 作品内語彙の開始・終了 |
-| `ReviewGateConfigured` | blueprint | ゲートの定義変更 |
-| `GateEvidenceRecorded` | representation | 特定版ハッシュへの確認結果 |
-| `GateWaived` | gate | 理由・期限付きの例外 |
-| `DecisionCapsuleOpened` / `Confirmed` / `Superseded` | title/cut | 創作判断のライフサイクル |
-| `DecisionEvidenceInvalidated` | capsule | 根拠Versionまたは適用範囲の変化 |
-| `ImpactAcknowledged` | impact | 影響を確認した事実（解決ではない） |
-| `WorkAssigned` / `WorkUnassigned` | 対象 | アーティストと制作対象の結び付け |
+| イベント                                             | ストリーム     | 意味                                  |
+| ---------------------------------------------------- | -------------- | ------------------------------------- |
+| `ProductionBlueprintPublished`                       | title          | 新しい工程テンプレートを公開          |
+| `CutBlueprintAdopted`                                | cut            | 既存カットがどのBlueprintを採用したか |
+| `StudioTermDefined` / `StudioTermRetired`            | title          | 作品内語彙の開始・終了                |
+| `ReviewGateConfigured`                               | blueprint      | ゲートの定義変更                      |
+| `GateEvidenceRecorded`                               | representation | 特定版ハッシュへの確認結果            |
+| `GateWaived`                                         | gate           | 理由・期限付きの例外                  |
+| `DecisionCapsuleOpened` / `Confirmed` / `Superseded` | title/cut      | 創作判断のライフサイクル              |
+| `DecisionEvidenceInvalidated`                        | capsule        | 根拠Versionまたは適用範囲の変化       |
+| `ImpactAcknowledged`                                 | impact         | 影響を確認した事実（解決ではない）    |
+| `WorkAssigned` / `WorkUnassigned`                    | 対象           | アーティストと制作対象の結び付け      |
 
 設定変更も制作変更と同じくイベントにする。過去再生では、その時点で有効だったBlueprint・語彙・ゲートに従ってReadinessと表示名を再構成する。
 
 ## 11.11 導入順序
 
-| Phase | 導入対象 | 成果 |
-| --- | --- | --- |
-| A | `studio_term`、作品内表示名、`work_assignment`の対象拡張 | 現場の語彙とアーティスト割当を壊さず記録できる |
-| B | Blueprint（固定カタログ＋DAG検証）とReadiness投影 | 作品ごとの差を持ちながら「次に進めるか」を導出できる |
-| C | GateEvidence、期限付きWaive、Handoff Rail | 後工程の納期契約と反復レビューを両立できる |
-| D | Decision Capsule、Ripple Mapのdry run | 早期判断の根拠と変更コストを見える化できる |
-| E | Asset／DCC連携をDependency Linkへ投影 | 2D・3D・撮影をまたぐ影響範囲を一貫して追跡できる |
+| Phase | 導入対象                                                 | 成果                                                 |
+| ----- | -------------------------------------------------------- | ---------------------------------------------------- |
+| A     | `studio_term`、作品内表示名、`work_assignment`の対象拡張 | 現場の語彙とアーティスト割当を壊さず記録できる       |
+| B     | Blueprint（固定カタログ＋DAG検証）とReadiness投影        | 作品ごとの差を持ちながら「次に進めるか」を導出できる |
+| C     | GateEvidence、期限付きWaive、Handoff Rail                | 後工程の納期契約と反復レビューを両立できる           |
+| D     | Decision Capsule、Ripple Mapのdry run                    | 早期判断の根拠と変更コストを見える化できる           |
+| E     | Asset／DCC連携をDependency Linkへ投影                    | 2D・3D・撮影をまたぐ影響範囲を一貫して追跡できる     |
 
 Phase A〜Cだけでも、Jijiは「工程表をデジタル化したもの」から、**版・判断・受け渡しを根拠付きで運用できる制作基盤**へ変わる。Phase D以降は、その基盤の上で創作上の反復を守りながら、後工程の損失を小さくする。
 
@@ -929,24 +1081,24 @@ Production Kernelは、作品固有の制作文法を構造化する。Graph-nat
 
 Jijiは一枚の万能グラフを永続化しない。異なる意味と数学的性質を持つ関係を分離し、問い合わせ時にのみ合成する。これにより、同じ「線」に見える関係を誤って同じ制約として扱わない。
 
-| レイヤー | 正本となるエンティティ／関係 | 数学モデル | 主な射影 |
-| --- | --- | --- | --- |
-| Process Graph | Blueprint node、Review Gate、`requires` / `feeds` / `informs` | 型付きDAG・半順序集合 | Readiness、Frontier、構造図 |
-| Provenance Graph | Representation、Version、派生・置換・Asset使用 | Provenance DAG | Cut Lineage、根拠追跡、stale判定 |
-| Decision Graph | Decision Capsule、根拠Version、coverage | ハイパーグラフ | 判断の適用範囲・失効理由 |
-| Resource Graph | Artist、Assignment、Process node | 二部グラフ | 割当候補・競合・将来の容量分析 |
-| Temporal Graph | Event、Blueprint version、期限 | 時間グラフ | 監査、過去再生、時点比較 |
-| Execution Trace | 実際に起きた提出・レビュー・差戻しイベント | イベント列／ペトリネット投影 | 設計工程と実工程の比較 |
+| レイヤー         | 正本となるエンティティ／関係                                  | 数学モデル                   | 主な射影                         |
+| ---------------- | ------------------------------------------------------------- | ---------------------------- | -------------------------------- |
+| Process Graph    | Blueprint node、Review Gate、`requires` / `feeds` / `informs` | 型付きDAG・半順序集合        | Readiness、Frontier、構造図      |
+| Provenance Graph | Representation、Version、派生・置換・Asset使用                | Provenance DAG               | Cut Lineage、根拠追跡、stale判定 |
+| Decision Graph   | Decision Capsule、根拠Version、coverage                       | ハイパーグラフ               | 判断の適用範囲・失効理由         |
+| Resource Graph   | Artist、Assignment、Process node                              | 二部グラフ                   | 割当候補・競合・将来の容量分析   |
+| Temporal Graph   | Event、Blueprint version、期限                                | 時間グラフ                   | 監査、過去再生、時点比較         |
+| Execution Trace  | 実際に起きた提出・レビュー・差戻しイベント                    | イベント列／ペトリネット投影 | 設計工程と実工程の比較           |
 
 `Ripple Map` は第六の正本ではない。Process・Provenance・Decision・Temporalを、提案または確定する変更から横断探索して得る**影響問い合わせ結果**である。
 
 ### エッジの意味は混ぜない
 
-| 辺 | Readinessへの効果 | Rippleの既定重大度 |
-| --- | --- | --- |
-| `requires` | 前提が未充足ならブロック | `blocked` |
-| `feeds` | 旧版の利用を再確認対象にする | `review_required` |
-| `informs` | 原則ブロックしない | `info` |
+| 辺         | Readinessへの効果            | Rippleの既定重大度 |
+| ---------- | ---------------------------- | ------------------ |
+| `requires` | 前提が未充足ならブロック     | `blocked`          |
+| `feeds`    | 旧版の利用を再確認対象にする | `review_required`  |
+| `informs`  | 原則ブロックしない           | `info`             |
 
 複数経路の重大度は `info < review_required < blocked` の順で決定論的に畳み込む。重要な演出資料であっても、物理的・契約的な開始条件ではない限り、勝手に工程停止へ変換しない。
 
@@ -956,9 +1108,9 @@ Jijiは一枚の万能グラフを永続化しない。異なる意味と数学�
 
 `requires` が作る半順序集合から、現在 `ready` である極小のnode群を求める。これは「優先度順のタスク一覧」ではなく、**依存を破らずに今着手できる集合**である。
 
-* アーティストには、割当済みで着手可能な対象、必要な根拠版、次の受取先を示す。
-* 制作進行には、未割当・ゲート待ち・前提不足で前線へ出ていない理由を示す。
-* Handoff Railはこの射影のカット詳細版であり、全工程図の代替ではない。
+- アーティストには、割当済みで着手可能な対象、必要な根拠版、次の受取先を示す。
+- 制作進行には、未割当・ゲート待ち・前提不足で前線へ出ていない理由を示す。
+- Handoff Railはこの射影のカット詳細版であり、全工程図の代替ではない。
 
 同時に着手できる候補が複数ある場合、トポロジカルソートは「依存を破らない順序」を返すだけで、最適順序を決めない。納期優先、後工程解放優先、まとめ作業優先、リスク優先、手動優先のようなポリシーは、Frontierへ順位を付ける別の処理とする。推薦の採否は制作事実ではないためイベント化せず、実際の割当・提出・レビューだけを記録する。
 
@@ -977,10 +1129,10 @@ Atelier SetupのBlueprint確認・下書き編集では、工程方向が安定�
 
 提出・差替え・尺変更・Blueprint公開前にdry runを行い、変更を確定する前に次を返す。
 
-* 直接影響と間接影響
-* `blocked` になる受け渡し、再レビューが必要なゲート、失効するDecision Capsule
-* 固定期限がある場合の納期への影響
-* 各影響先へ至る最短または代表の説明経路
+- 直接影響と間接影響
+- `blocked` になる受け渡し、再レビューが必要なゲート、失効するDecision Capsule
+- 固定期限がある場合の納期への影響
+- 各影響先へ至る最短または代表の説明経路
 
 ```text
 LO v06
@@ -995,12 +1147,12 @@ LO v06
 
 所要時間、営業日カレンダー、固定期限、並列可能性が十分に記録されて初めて、CPM/PERTでCritical PathとSlackを計算する。Handoff Railには進捗率を重ねず、余裕を次のように表す。
 
-| 条件 | 表示 |
-| --- | --- |
-| Slackなし | 危険帯と「ここが1日遅れると納品も1日遅延」 |
-| Slack小 | 注意帯と残余裕 |
-| Slack十分 | 通常のレール |
-| 推定データ不足 | 点線と「期間データ不足」 |
+| 条件           | 表示                                       |
+| -------------- | ------------------------------------------ |
+| Slackなし      | 危険帯と「ここが1日遅れると納品も1日遅延」 |
+| Slack小        | 注意帯と残余裕                             |
+| Slack十分      | 通常のレール                               |
+| 推定データ不足 | 点線と「期間データ不足」                   |
 
 単一点の予測を確定値のように表示しない。推定には入力期間、計算時刻、確度またはレンジを添える。期間・期限モデルが未整備の間は、このUIを有効化しない。
 
@@ -1016,10 +1168,10 @@ LO v06
 
 編集時のガードレールは次の通りとする。
 
-* edge追加・ドラッグ完了時に、循環、未知のcanonical key、成果物型不足、期限逆転を即時計算する。
-* `requires` / `feeds` / `informs` の差と下流への効果を、その場で説明する。
-* Publish前には、既存カットと通過済みゲートへのRipple Previewを必ず表示する。
-* グラフキャンバスを唯一の編集手段にしない。表形式・キーボード操作・スクリーンリーダー用の論理順序を同等に提供する。
+- edge追加・ドラッグ完了時に、循環、未知のcanonical key、成果物型不足、期限逆転を即時計算する。
+- `requires` / `feeds` / `informs` の差と下流への効果を、その場で説明する。
+- Publish前には、既存カットと通過済みゲートへのRipple Previewを必ず表示する。
+- グラフキャンバスを唯一の編集手段にしない。表形式・キーボード操作・スクリーンリーダー用の論理順序を同等に提供する。
 
 創作上の反復は工程定義の循環ではない。Blueprintの`requires`循環は公開時に拒否し、LO修正・再提出・差戻しのような現実のループは、新しいVersionとEventとしてExecution Traceへ残す。
 
@@ -1053,26 +1205,26 @@ Shell (I/O)
 
 本章の導入は11.11節のPhase A〜Eを置き換えず、その上に分析・UIを段階的に積む。
 
-| Phase | 導入対象 | 有効化条件 |
-| --- | --- | --- |
-| G-A | typed DAG、cycle検出、Structure Mapの推移的簡約 | Blueprintの安全な公開と読みやすい確認 |
-| G-B | Readiness Frontier、説明経路 | 割当・最新版・ゲート証跡が揃う |
-| G-C | Ripple Preview、局所影響表示 | Version lineageとGateEvidenceが揃う |
-| G-D | Critical Ribbon、Slack | 期間・期限・営業日カレンダーの品質を満たす |
-| G-E | Structural Risk、Capacity What-if | 並列度・能力・稼働枠を明示的にモデル化できる |
-| G-F | Designed vs. Observed | 十分なイベント履歴を、非監視原則のもとで集計できる |
+| Phase | 導入対象                                        | 有効化条件                                         |
+| ----- | ----------------------------------------------- | -------------------------------------------------- |
+| G-A   | typed DAG、cycle検出、Structure Mapの推移的簡約 | Blueprintの安全な公開と読みやすい確認              |
+| G-B   | Readiness Frontier、説明経路                    | 割当・最新版・ゲート証跡が揃う                     |
+| G-C   | Ripple Preview、局所影響表示                    | Version lineageとGateEvidenceが揃う                |
+| G-D   | Critical Ribbon、Slack                          | 期間・期限・営業日カレンダーの品質を満たす         |
+| G-E   | Structural Risk、Capacity What-if               | 並列度・能力・稼働枠を明示的にモデル化できる       |
+| G-F   | Designed vs. Observed                           | 十分なイベント履歴を、非監視原則のもとで集計できる |
 
 受入基準は少なくとも次を満たす。
 
-| ID | シナリオ | 期待結果 |
-| --- | --- | --- |
-| G-AC-01 | `requires`で循環するdraftをPublishする | 循環経路を示して拒否する |
-| G-AC-02 | 冗長な依存を含むBlueprintを表示する | 正本を変えず、冗長線を既定で隠す |
-| G-AC-03 | 必須前提・担当・根拠が揃う | Frontierに理由付きで現れる |
-| G-AC-04 | 採用済みLOを差し替えるdry run | 直接・間接影響と説明経路を表示する |
-| G-AC-05 | `informs`だけの資料を更新する | `blocked`にせず`info`として扱う |
-| G-AC-06 | Gate通過後に根拠Versionを更新する | 通過履歴を保持し、現在状態を`stale`にする |
-| G-AC-07 | グラフ画面を利用できない | 表・リスト・説明経路で同じ判断へ到達できる |
-| G-AC-08 | 期間データが不足する | Critical Pathを確定表示せず、データ不足を示す |
+| ID      | シナリオ                               | 期待結果                                      |
+| ------- | -------------------------------------- | --------------------------------------------- |
+| G-AC-01 | `requires`で循環するdraftをPublishする | 循環経路を示して拒否する                      |
+| G-AC-02 | 冗長な依存を含むBlueprintを表示する    | 正本を変えず、冗長線を既定で隠す              |
+| G-AC-03 | 必須前提・担当・根拠が揃う             | Frontierに理由付きで現れる                    |
+| G-AC-04 | 採用済みLOを差し替えるdry run          | 直接・間接影響と説明経路を表示する            |
+| G-AC-05 | `informs`だけの資料を更新する          | `blocked`にせず`info`として扱う               |
+| G-AC-06 | Gate通過後に根拠Versionを更新する      | 通過履歴を保持し、現在状態を`stale`にする     |
+| G-AC-07 | グラフ画面を利用できない               | 表・リスト・説明経路で同じ判断へ到達できる    |
+| G-AC-08 | 期間データが不足する                   | Critical Pathを確定表示せず、データ不足を示す |
 
 数学は判断を支援するが、創作判断と責任主体を代替しない。Jijiは「誰が遅いか」より先に、工程構造、依存、根拠、容量、期限という制作の条件を可視化する。

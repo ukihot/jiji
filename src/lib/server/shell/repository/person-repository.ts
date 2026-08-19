@@ -10,6 +10,7 @@ export interface PersonRow {
 	email: string | null;
 	accountType: 'internal' | 'external';
 	workspaceRole: WorkspaceRole | null;
+	relayEnabled: boolean;
 }
 
 export async function getPerson(db: SqliteQueryable, personId: string): Promise<PersonRow | null> {
@@ -40,4 +41,13 @@ export async function updateWorkspaceRole(
 	workspaceRole: WorkspaceRole,
 ): Promise<void> {
 	await db.update(person).set({ workspaceRole }).where(eq(person.id, personId));
+}
+
+/** ownerが明示的に付与する、端末ブラウザを社内Relayとして起動するための権限。 */
+export async function updateRelayEnabled(
+	db: SqliteQueryable,
+	personId: string,
+	relayEnabled: boolean,
+): Promise<void> {
+	await db.update(person).set({ relayEnabled }).where(eq(person.id, personId));
 }

@@ -29,9 +29,10 @@ Jiji は国産TVアニメ制作向けの「Living Timeline」作品管理ツー�
 - Membership（design.md 8章）：Googleスプレッドシート共有を踏襲。scope_type(title/timeline) × permission_level(viewer/contributor/reviewer/admin) × 有効期限。Title作成者は自動でadminになる。最後のadminロックアウト防止をdecideで保証
 - ShareLink + Magic Identity（design.md 8.5節）：外部作業者向け時限リンク。contributor権限は初回アクセス時に名前入力（メール・パスワード不要）で`person`(external)を作成
 - 9テーマ×light/dark=18通りのUIテーマシステム（後述7章）
+- 社内Relay（design.md 9.6節）：register/heartbeat/「今すぐ取得」（object storageのlist scan発見→claim→取得→検証→削除）まで一通り実装済み。Submission機能が無いためjobは出稿ではなくbucket直下のlist scanで発見する簡略実装。ヘッダーの接続バッジ（`RelayConnectionBadge.svelte`）とログイン時の自動再接続（`relay-connection.svelte.ts`）も実装済み。gcs/azure_blob providerとステージング書込み（`.jiji-part-{jobId}`→rename）は未実装（design.md 9.6.2・9.6.5・10章参照）
 
 **未実装**（意図的に範囲外。次にやるならここ）:
-- Submission / Version / Review / Seal / Issue（design.md 13章 Phase 2〜3相当）
+- Submission / Version / Review / Seal / Issue（design.md 13章 Phase 2〜3相当）。これが無いためRelayのjobは出稿ではなくlist scan発見に頼っている（design.md 9.6.5節）
 - Asset / CutAsset（Should機能）
 - ffmpegプロキシ生成パイプライン（design.md 6章）
 - 内部ユーザーのTOTP本実装（今は `/dev-login` の開発用スタブのみ。`lib/server/auth/internal.ts`参照）

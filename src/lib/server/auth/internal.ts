@@ -18,6 +18,7 @@ export interface CurrentPerson {
 	email: string | null;
 	accountType: 'internal' | 'external';
 	workspaceRole: WorkspaceRole | null;
+	relayEnabled: boolean;
 }
 
 export function getCurrentPersonId(cookies: Cookies): string | null {

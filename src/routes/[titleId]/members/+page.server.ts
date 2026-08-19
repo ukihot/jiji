@@ -11,6 +11,7 @@ import { getMembership } from '$lib/server/shell/repository/membership-repositor
 import {
 	getPerson,
 	listPersons,
+	updateRelayEnabled,
 	updateWorkspaceRole,
 } from '$lib/server/shell/repository/person-repository';
 import { getTitle, listTimelinesByTitle } from '$lib/server/shell/repository/timeline-repository';
@@ -227,5 +228,24 @@ export const actions: Actions = {
 			await updateWorkspaceRole(tx, recipient.id, 'owner');
 		});
 		return { success: true };
+	},
+
+	setRelayOperator: async ({ request, locals }) => {
+		if (!locals.currentPerson) return fail(401, { message: m.error_login_required() });
+		if (!canWorkspaceRole(locals.currentPerson.workspaceRole, 'manageWorkspaceRoles')) {
+			return fail(403, { message: m.error_no_permission() });
+		}
+		const formData = await request.formData();
+		const personId = formData.get('personId');
+		const enabled = formData.get('enabled') === 'true';
+		if (typeof personId !== 'string' || personId.length === 0) {
+			return fail(400, { message: m.error_invalid_request() });
+		}
+		const person = await getPerson(locals.db, personId);
+		if (!person || person.accountType !== 'internal') {
+			return fail(404, { message: m.error_not_found() });
+		}
+		await updateRelayEnabled(locals.db, personId, enabled);
+		return { relayOperatorUpdated: true };
 	},
 };

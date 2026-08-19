@@ -381,7 +381,13 @@
 						<FormInput type="text" name="processStep" placeholder="LO" required class="w-24" />
 					</FormField>
 					<FormField label={m.label_file_ref()}>
-						<FormInput type="text" name="fileRef" placeholder="//nas/..." required class="w-56" />
+						<FormInput
+							type="text"
+							name="fileRef"
+							placeholder="//shared/..."
+							required
+							class="w-56"
+						/>
 					</FormField>
 					<FormField label={m.label_proxy_ref_optional()}>
 						<FormInput type="text" name="proxyRef" class="w-40" />

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Settings from '@lucide/svelte/icons/settings';
+	import Radio from '@lucide/svelte/icons/radio';
 	import Users from '@lucide/svelte/icons/users';
 	import type { RepresentationType } from '$lib/core/representation';
 	import * as m from '$lib/paraglide/messages';
@@ -14,6 +15,9 @@
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+	let relayStorageProvider = $state<'s3' | 's3_compatible' | 'supabase' | 'gcs' | 'azure_blob'>(
+		's3',
+	);
 
 	const TYPE_LABEL: Record<RepresentationType, () => string> = {
 		storyboard: m.representation_type_storyboard,
@@ -71,6 +75,223 @@
 			</span>
 			<span class="text-muted" aria-hidden="true">↗</span>
 		</a>
+	</Panel>
+
+	<Panel class="settings-link-panel">
+		<a href="/relay" class="text-foreground flex items-center gap-3 no-underline">
+			<span
+				class="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-xl"
+			>
+				<Radio size={18} aria-hidden="true" />
+			</span>
+			<span class="min-w-0 flex-1">
+				<span class="settings-eyebrow">{m.relay_settings_link_eyebrow()}</span>
+				<span class="mt-1 block text-sm font-semibold">{m.relay_settings_link_heading()}</span>
+				<span class="text-muted mt-0.5 block text-xs">
+					{data.currentPerson?.relayEnabled
+						? m.relay_settings_link_hint_enabled()
+						: m.relay_settings_link_hint_disabled()}
+				</span>
+			</span>
+			<span class="text-muted" aria-hidden="true">↗</span>
+		</a>
+	</Panel>
+
+	<Panel tag="form" method="POST" action="?/configureRelayStorage" class="space-y-3 lg:col-span-2">
+		<div>
+			<p class="settings-eyebrow">{m.relay_settings_data_plane_eyebrow()}</p>
+			<h2 class="text-foreground text-sm font-semibold">{m.relay_settings_heading()}</h2>
+			<p class="text-muted mt-0.5 text-xs">
+				{m.relay_settings_intro()}
+			</p>
+		</div>
+		<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+			<FormField label={m.relay_settings_provider_label()}>
+				<select
+					name="provider"
+					value={relayStorageProvider}
+					onchange={(event) =>
+						(relayStorageProvider = event.currentTarget.value as typeof relayStorageProvider)}
+					class="border-border bg-background text-foreground focus:border-primary focus:ring-primary rounded-md px-2 py-1.5 text-sm"
+				>
+					<option value="s3">Amazon S3</option>
+					<option value="s3_compatible">S3互換（R2 / MinIO / Wasabi等）</option>
+					<option value="supabase">Supabase Storage</option>
+					<option value="gcs">Google Cloud Storage</option>
+					<option value="azure_blob">Azure Blob Storage</option>
+				</select>
+			</FormField>
+			<FormField
+				label={relayStorageProvider === 'supabase'
+					? m.relay_settings_bucket_label_supabase()
+					: m.relay_settings_bucket_label_generic()}
+			>
+				<FormInput name="bucketOrContainer" placeholder="jiji-production" required />
+			</FormField>
+			<FormField label={m.relay_settings_prefix_label()}>
+				<FormInput name="prefix" placeholder="relay-staging" required />
+			</FormField>
+			{#if relayStorageProvider === 'supabase'}
+				<FormField label={m.relay_settings_endpoint_label_supabase()}>
+					<FormInput
+						name="endpoint"
+						type="url"
+						placeholder="https://<project-ref>.storage.supabase.co/storage/v1/s3"
+						required
+					/>
+				</FormField>
+			{:else}
+				<FormField label={m.relay_settings_endpoint_label_generic()}>
+					<FormInput name="endpoint" type="url" placeholder="https://…" />
+				</FormField>
+			{/if}
+			<FormField
+				label={relayStorageProvider === 'supabase'
+					? m.relay_settings_region_label_supabase()
+					: m.relay_settings_region_label_generic()}
+			>
+				<FormInput name="region" placeholder="ap-northeast-1" />
+			</FormField>
+			{#if relayStorageProvider === 'supabase'}
+				<input type="hidden" name="authRef" value="SUPABASE_S3_CREDENTIALS" />
+			{:else}
+				<FormField label={m.relay_settings_auth_ref_label()}>
+					<FormInput name="authRef" placeholder="RELAY_STORAGE_SECRET" required />
+				</FormField>
+			{/if}
+			<FormField label={m.relay_settings_access_key_id_label()}>
+				<FormInput name="accessKeyId" placeholder="AKIA…" autocomplete="off" />
+			</FormField>
+			<FormField label={m.relay_settings_secret_access_key_label()}>
+				<FormInput
+					name="secretAccessKey"
+					type="password"
+					placeholder="••••••••"
+					autocomplete="off"
+				/>
+			</FormField>
+		</div>
+		{#if relayStorageProvider === 'supabase'}
+			<div class="border-primary/25 bg-primary/5 rounded-lg border p-3 text-sm leading-6">
+				<p class="text-foreground font-semibold">{m.relay_settings_supabase_help_heading()}</p>
+				<ol class="text-muted mt-1 list-decimal space-y-1 pl-5 text-xs">
+					<li>{m.relay_settings_supabase_step1()}</li>
+					<li>{m.relay_settings_supabase_step2()}</li>
+					<li>{m.relay_settings_supabase_step3()}</li>
+					<li>
+						{m.relay_settings_supabase_step4_prefix()}<code>jiji-relay</code
+						>{m.relay_settings_supabase_step4_suffix()}
+					</li>
+				</ol>
+				<p class="text-muted mt-2 text-xs">
+					{m.relay_settings_credentials_note()}
+				</p>
+			</div>
+		{:else}
+			<p class="text-muted text-xs">
+				{m.relay_settings_credentials_note_plain()}
+			</p>
+		{/if}
+		<Button type="submit">{m.relay_settings_submit_action()}</Button>
+		{#if form?.relayStorageConnection}
+			<p class="text-success text-xs">{m.relay_settings_registered_success()}</p>
+		{/if}
+		{#if data.relayStorageConnections.length > 0}
+			<ul class="border-border divide-border divide-y rounded-lg border text-xs">
+				{#each data.relayStorageConnections as connection (connection.id)}
+					<li class="space-y-2 px-3 py-2">
+						<div class="flex flex-wrap items-center justify-between gap-2">
+							<span class="text-foreground font-medium"
+								>{connection.provider} · {connection.bucketOrContainer}/{connection.prefix}</span
+							>
+							<span class="flex items-center gap-2">
+								<span
+									class:text-success={connection.hasCredentials}
+									class:text-warning={!connection.hasCredentials}
+								>
+									{connection.hasCredentials
+										? m.relay_settings_credentials_configured()
+										: m.relay_settings_credentials_not_configured()}
+								</span>
+								<span class="text-muted"
+									>{connection.enabled
+										? m.relay_settings_enabled_label()
+										: m.relay_settings_disabled_label()}</span
+								>
+							</span>
+						</div>
+						<form
+							method="POST"
+							action="?/setRelayStorageCredentials"
+							class="flex flex-wrap items-end gap-2"
+						>
+							<input type="hidden" name="connectionId" value={connection.id} />
+							<FormField label={m.relay_settings_access_key_id_label()}>
+								<FormInput name="accessKeyId" placeholder="AKIA…" autocomplete="off" />
+							</FormField>
+							<FormField label={m.relay_settings_secret_access_key_label()}>
+								<FormInput
+									name="secretAccessKey"
+									type="password"
+									placeholder="••••••••"
+									autocomplete="off"
+								/>
+							</FormField>
+							<Button type="submit" variant="outline"
+								>{connection.hasCredentials
+									? m.relay_settings_credentials_update_action()
+									: m.relay_settings_credentials_set_action()}</Button
+							>
+						</form>
+						{#if form?.relayStorageCredentialsUpdated === connection.id}
+							<p class="text-success text-xs">{m.relay_settings_credentials_updated()}</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Panel>
+
+	<Panel class="space-y-3">
+		<div class="flex items-start justify-between gap-3">
+			<div>
+				<p class="settings-eyebrow">{m.relay_settings_availability_eyebrow()}</p>
+				<h2 class="text-foreground text-sm font-semibold">
+					{m.relay_settings_availability_heading()}
+				</h2>
+			</div>
+			<span class="text-muted text-xs"
+				>{m.relay_settings_pending_jobs_label({ count: String(data.pendingRelayJobs) })}</span
+			>
+		</div>
+		{#if data.relayRegistrations.length === 0}
+			<p class="text-muted text-sm">{m.relay_settings_no_registrations()}</p>
+		{:else}
+			<ul class="space-y-2">
+				{#each data.relayRegistrations as relay (relay.id)}
+					<li
+						class="border-border bg-background/45 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
+					>
+						<span class="text-foreground min-w-0 truncate"
+							>{relay.displayName}
+							<span class="text-muted text-xs">· {relay.personName}</span></span
+						>
+						<span
+							class:text-success={relay.status === 'online'}
+							class:text-warning={relay.status === 'checking'}
+							class:text-muted={relay.status === 'offline'}
+							class="shrink-0 text-xs font-medium"
+						>
+							{relay.status === 'online'
+								? m.relay_status_online()
+								: relay.status === 'checking'
+									? m.relay_status_checking()
+									: m.relay_status_offline()}
+						</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	</Panel>
 
 	<Panel tag="form" method="POST" action="?/updateRepresentationTypes" class="space-y-3">

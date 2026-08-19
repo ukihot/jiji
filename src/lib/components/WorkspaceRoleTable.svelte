@@ -9,6 +9,7 @@
 		name: string;
 		accountType: 'internal' | 'external';
 		workspaceRole: WorkspaceRole | null;
+		relayEnabled: boolean;
 	};
 
 	let { persons }: { persons: Person[] } = $props();
@@ -28,6 +29,7 @@
 			<tr class="border-border text-muted border-b text-left">
 				<th class="px-4 py-2 font-medium">{m.label_name()}</th>
 				<th class="px-4 py-2 font-medium">{m.label_workspace_role()}</th>
+				<th class="px-4 py-2 font-medium">社内Relay</th>
 				<th class="px-4 py-2"></th>
 			</tr>
 		</thead>
@@ -39,6 +41,19 @@
 						{person.workspaceRole
 							? ROLE_LABEL[person.workspaceRole]()
 							: m.workspace_role_participant()}
+					</td>
+					<td class="px-4 py-2.5">
+						<form
+							method="POST"
+							action="?/setRelayOperator"
+							class="inline-flex items-center gap-1.5"
+						>
+							<input type="hidden" name="personId" value={person.id} />
+							<input type="hidden" name="enabled" value={person.relayEnabled ? 'false' : 'true'} />
+							<Button type="submit" variant="outline">
+								{person.relayEnabled ? '許可済み（外す）' : 'Relayを許可'}
+							</Button>
+						</form>
 					</td>
 					<td class="px-4 py-2.5 text-right">
 						{#if person.workspaceRole === 'owner'}

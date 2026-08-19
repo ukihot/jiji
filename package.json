@@ -24,6 +24,7 @@
 	},
 	"dependencies": {
 		"@lucide/svelte": "^1.28.0",
+		"aws4fetch": "^1.0.20",
 		"drizzle-orm": "^0.45.2",
 		"layerchart": "^2.2.0",
 		"rough-viz": "^2.0.5"

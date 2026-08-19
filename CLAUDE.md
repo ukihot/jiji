@@ -139,25 +139,31 @@ bunx svelte-kit sync && bun x tsc --noEmit -p tsconfig.json   # 型チェック
 ```text
 src/
   routes/                              … Presentation層
-    +layout.svelte / +layout.server.ts  … ヘッダー・ThemeSwitcher・currentPerson
+    +layout.svelte / +layout.server.ts  … ヘッダー・ThemeSwitcher・RelayConnectionBadge・currentPerson
     api/theme/+server.ts                 … テーマCookie保存
+    api/relay/                           … register/heartbeat/jobs（今すぐ取得）/deliver
     dev-login/                           … 開発用ログインスタブ
+    relay/+page.svelte                   … Relay初回フォルダ選択・状態詳細（design.md 9.6節）
     [titleId]/
       +page.svelte                       … Timeline一覧
       [timelineId]/+page.svelte          … Timeline Viewer（Cut帯＋共有リンク発行）
       members/+page.svelte               … メンバー管理（design.md 8.6節）
+      settings/+page.svelte              … 作品設定（Relay転送待ちストレージ設定含む）
     s/[token]/+page.svelte               … Magic Identity着地ページ
   lib/
     theme.ts                             … テーマ定義の単一情報源
+    client/relay-connection.svelte.ts    … Relay接続状態の共有state（Svelte 5 module runes）
     components/ThemeSwitcher.svelte
+    components/RelayConnectionBadge.svelte
     core/                                … Functional Core（純粋関数、*.spec.ts併設）
-      timeline.ts / membership.ts / share-link.ts / event-hash.ts
+      timeline.ts / membership.ts / share-link.ts / event-hash.ts / relay.ts
       projections/timeline-band-view.ts / membership-state.ts
     server/
       db/schema.ts, index.ts, bootstrap.ts
       auth/internal.ts（開発用スタブ）, share-token.ts（Magic Identity）
       shell/
-        repository/  … Drizzleクエリ（timeline/person/membership/share-link/event）
+        relay-object-storage.ts … aws4fetchによるS3互換API直叩き（design.md 9.6.2節）
+        repository/  … Drizzleクエリ（timeline/person/membership/share-link/event/relay）
         commands/    … decide呼び出し＋event追記＋投影更新
         queries/     … 投影テーブル読み出し
         authorization.ts
